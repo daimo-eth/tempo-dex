@@ -1,0 +1,50 @@
+export const ROOT_TOKEN = '0x20c0000000000000000000000000000000000000'
+
+export const TOKENS = [
+  ROOT_TOKEN,
+  '0x20c0000000000000000000000000000000000001',
+  '0x20c0000000000000000000000000000000000002',
+  '0x20c0000000000000000000000000000000000003',
+  '0x20c0000000000000000000000000000000000004',
+]
+
+export const tokenMeta: Record<
+  string,
+  {
+    address: string
+    addressShort: string
+    symbol: string
+    parent: string | null
+  }
+> = {
+  [ROOT_TOKEN]: {
+    address: ROOT_TOKEN,
+    addressShort: '0x20c0...0000',
+    symbol: 'pathUSD',
+    parent: null,
+  },
+  '0x20c0000000000000000000000000000000000001': {
+    address: '0x20c0000000000000000000000000000000000001',
+    addressShort: '0x20c0...0001',
+    symbol: 'AlphaUSD',
+    parent: ROOT_TOKEN,
+  },
+  '0x20c0000000000000000000000000000000000002': {
+    address: '0x20c0000000000000000000000000000000000002',
+    addressShort: '0x20c0...0002',
+    symbol: 'BetaUSD',
+    parent: ROOT_TOKEN,
+  },
+  '0x20c0000000000000000000000000000000000003': {
+    address: '0x20c0000000000000000000000000000000000003',
+    addressShort: '0x20c0...0003',
+    symbol: 'GammaUSD',
+    parent: '0x20c0000000000000000000000000000000000001',
+  },
+  '0x20c0000000000000000000000000000000000004': {
+    address: '0x20c0000000000000000000000000000000000004',
+    addressShort: '0x20c0...0004',
+    symbol: 'DeltaUSD',
+    parent: '0x20c0000000000000000000000000000000000002',
+  },
+}

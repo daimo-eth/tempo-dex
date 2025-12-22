@@ -26,26 +26,22 @@ a {
   min-height: 100%;
 }
 
-.container {
-  max-width: 900px;
+.page {
+  max-width: 980px;
   margin: 0 auto;
-  padding: 48px 24px 64px;
+  padding: 40px 24px 64px;
 }
 
-.topbar {
+.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: 1px solid #e6e8eb;
-  background: #ffffff;
-  position: sticky;
-  top: 0;
+  margin-bottom: 24px;
 }
 
-.logo {
+.header h1 {
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: 0.2px;
 }
 
 .badge {
@@ -58,76 +54,118 @@ a {
   border-radius: 999px;
 }
 
-.hero {
-  margin-top: 28px;
-  display: grid;
-  gap: 16px;
-}
-
-.hero h1 {
-  font-size: clamp(28px, 3.5vw, 40px);
-  font-weight: 600;
-}
-
-.hero p {
-  color: #4b5563;
-  max-width: 640px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.card {
+.panel {
   background: #ffffff;
   border: 1px solid #e6e8eb;
-  border-radius: 12px;
-  padding: 16px;
-  display: grid;
-  gap: 10px;
-  min-height: 140px;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
 }
 
-.card h3 {
-  font-size: 16px;
+.panel-title {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+.tree {
+  list-style: none;
+  padding-left: 0;
+}
+
+.branch {
+  list-style: none;
+  margin-left: 18px;
+  padding-left: 14px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  color: #111827;
+}
+
+.node .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.node.is-active .dot {
+  background: #111827;
+}
+
+.node.is-active .symbol {
   font-weight: 600;
 }
 
-.card p {
-  color: #6b7280;
-  font-size: 14px;
-}
-
-.mono {
+.address {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  color: #1f2937;
+  font-size: 11px;
+  color: #6b7280;
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
-  padding: 4px 6px;
+  padding: 2px 6px;
   border-radius: 6px;
-  width: fit-content;
 }
 
-.footer {
-  margin-top: 40px;
-  color: #9ca3af;
+.swap {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+label {
   font-size: 12px;
-  display: flex;
-  justify-content: space-between;
-  border-top: 1px solid #e6e8eb;
-  padding-top: 16px;
+  color: #6b7280;
+}
+
+select,
+input {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #ffffff;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quote {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: #111827;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.path {
+  color: #6b7280;
 }
 
 @media (max-width: 640px) {
-  .topbar {
-    padding: 14px 16px;
+  .page {
+    padding: 28px 16px 48px;
   }
 
-  .container {
-    padding: 32px 16px 48px;
+  .row {
+    grid-template-columns: 1fr;
   }
 }

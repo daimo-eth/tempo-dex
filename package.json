@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --sourcemap --servedir=dist --loader:.ts=tsx",
-    "build": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --minify --loader:.ts=tsx"
+    "dev": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --sourcemap --servedir=. --loader:.ts=tsx",
+    "build": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --minify --loader:.ts=tsx && cp index.html dist/index.html"
   },
   "dependencies": {
     "react": "^18.3.1",
