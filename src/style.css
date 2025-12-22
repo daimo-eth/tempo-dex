@@ -1,0 +1,133 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: #111827;
+  background: #f6f7f8;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#app {
+  min-height: 100%;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e6e8eb;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+}
+
+.logo {
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: #111827;
+  background: #eef2f7;
+  border: 1px solid #d8dee7;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.hero {
+  margin-top: 28px;
+  display: grid;
+  gap: 16px;
+}
+
+.hero h1 {
+  font-size: clamp(28px, 3.5vw, 40px);
+  font-weight: 600;
+}
+
+.hero p {
+  color: #4b5563;
+  max-width: 640px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e6e8eb;
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  min-height: 140px;
+}
+
+.card h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.card p {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: #1f2937;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  padding: 4px 6px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.footer {
+  margin-top: 40px;
+  color: #9ca3af;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid #e6e8eb;
+  padding-top: 16px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 14px 16px;
+  }
+
+  .container {
+    padding: 32px 16px 48px;
+  }
+}
