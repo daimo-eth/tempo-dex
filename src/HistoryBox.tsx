@@ -82,13 +82,7 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     <section className="panel">
       <div className="panel-title">// trade history</div>
       <div className="history">
-        {state.loading && state.swaps.length === 0 ? (
-          <div className="history-loading">loading...</div>
-        ) : state.error && state.swaps.length === 0 ? (
-          <div className="history-error">{state.error}</div>
-        ) : state.swaps.length === 0 ? (
-          <div className="history-empty">no swaps found</div>
-        ) : (
+        {state.swaps.length > 0 ? (
           <table className="history-table">
             <thead>
               <tr>
@@ -121,6 +115,12 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
               ))}
             </tbody>
           </table>
+        ) : state.loading ? (
+          <div className="history-loading">loading...</div>
+        ) : state.error ? (
+          <div className="history-error">{state.error}</div>
+        ) : (
+          <div className="history-empty">no swaps found</div>
         )}
       </div>
     </section>

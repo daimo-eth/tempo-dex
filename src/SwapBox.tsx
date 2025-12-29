@@ -10,6 +10,7 @@ import {
   useReadContract,
   useReadContracts,
   useSwitchChain,
+  useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 import {
@@ -132,7 +133,23 @@ export function SwapBox({
 
   // Approve transaction
   const approveWrite = useWriteContract();
-  const isApprovePending = approveWrite.isPending;
+
+  // Wait for approve tx confirmation, then refetch allowance
+  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
+    hash: approveWrite.data,
+    query: {
+      enabled: !!approveWrite.data,
+    },
+  });
+
+  // Refetch allowance when approve tx is confirmed
+  React.useEffect(() => {
+    if (approveWrite.data && !isApproveConfirming && approveWrite.isSuccess) {
+      refetchAllowance();
+    }
+  }, [approveWrite.data, isApproveConfirming, approveWrite.isSuccess, refetchAllowance]);
+
+  const isApprovePending = approveWrite.isPending || isApproveConfirming;
 
   const handleApprove = () => {
     console.log("[approve] handleApprove called", {
@@ -149,11 +166,6 @@ export function SwapBox({
         args: [DEX_ADDRESS, amountIn],
       },
       {
-        onSuccess: (hash) => {
-          console.log("[approve] success", hash);
-          // Refetch allowance after approval
-          refetchAllowance();
-        },
         onError: (error) => {
           console.error("[approve] error", error);
         },
@@ -163,7 +175,24 @@ export function SwapBox({
 
   // Swap transaction
   const swapWrite = useWriteContract();
-  const isSwapPending = swapWrite.isPending;
+
+  // Wait for swap tx confirmation
+  const { isLoading: isSwapConfirming } = useWaitForTransactionReceipt({
+    hash: swapWrite.data,
+    query: {
+      enabled: !!swapWrite.data,
+    },
+  });
+
+  // Trigger onSwapSuccess when swap tx is confirmed
+  React.useEffect(() => {
+    if (swapWrite.data && !isSwapConfirming && swapWrite.isSuccess) {
+      onSwapSuccess();
+      refetchAllowance();
+    }
+  }, [swapWrite.data, isSwapConfirming, swapWrite.isSuccess, onSwapSuccess, refetchAllowance]);
+
+  const isSwapPending = swapWrite.isPending || isSwapConfirming;
 
   // Quote info
   const amountOut = quote.data?.amountOut ?? 0n;
@@ -198,12 +227,6 @@ export function SwapBox({
         args: [fromToken, toToken, amountIn, minAmountOut],
       },
       {
-        onSuccess: (hash) => {
-          console.log("[swap] success", hash);
-          onSwapSuccess();
-          // Refetch allowance in case it was consumed
-          refetchAllowance();
-        },
         onError: (error) => {
           console.error("[swap] error", error);
         },
@@ -417,8 +440,11 @@ export function SwapBox({
             <div>no-op</div>
           ) : quote.loading && !quote.data ? (
             <div>loading quote...</div>
-          ) : quote.error && !quote.data ? (
-            <div className="error">{quote.error}</div>
+          ) : quote.error ? (
+            <>
+              <div>rate: -</div>
+              <div className="error">insufficient liquidity</div>
+            </>
           ) : amountOut > 0n ? (
             <>
               <div>rate: {rate.toFixed(6)}</div>

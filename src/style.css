@@ -59,7 +59,7 @@ a {
 
 .block-number {
   font-size: 11px;
-  color: #9ca3af;
+  color: #2a2;
 }
 
 .badge {
@@ -290,14 +290,14 @@ input:focus {
   font-weight: 600;
   letter-spacing: 0.05em;
   color: #fff;
-  background: #1a1a2e;
-  border: 1px solid #1a1a2e;
+  background: #2a2;
+  border: 1px solid #2a2;
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2d2d44;
+  background: #1ca61c;
 }
 
 .btn-primary:disabled {
