@@ -51,11 +51,51 @@ a {
   letter-spacing: 0.1em;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.block-number {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
 .badge {
   font-size: 11px;
   color: #1a1a2e;
   border: 1px solid #1a1a2e;
   padding: 2px 6px;
+}
+
+.tabs {
+  display: flex;
+  gap: 16px;
+}
+
+.tab {
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab:hover {
+  text-decoration: underline;
+  color: #1a1a2e;
+}
+
+.tab.active {
+  color: #1a1a2e;
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 .panel {
@@ -109,6 +149,85 @@ a {
 .tree-line .path-prefix {
   color: #1a1a2e;
   font-weight: 600;
+}
+
+.tree-line.clickable {
+  cursor: pointer;
+}
+
+.tree-line.clickable:hover .left {
+  color: #1a1a2e;
+}
+
+.tree-line.selected .right {
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+.liquidity {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #c5d0db;
+}
+
+.liquidity-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 6px;
+}
+
+.liquidity-stats {
+  font-size: 12px;
+  color: #6b7280;
+  display: flex;
+  gap: 16px;
+}
+
+.liquidity-loading,
+.liquidity-error {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.liquidity-error {
+  color: #dc2626;
+}
+
+.tick-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.tick-table th,
+.tick-table td {
+  text-align: left;
+  padding: 4px 8px 4px 0;
+}
+
+.tick-table th {
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.tick-table td {
+  color: #1a1a2e;
+}
+
+/* Shared text styles */
+.text-label {
+  color: #6b7280;
+}
+
+.text-value {
+  color: #1a1a2e;
+}
+
+.text-muted {
+  color: #9ca3af;
 }
 
 .swap {

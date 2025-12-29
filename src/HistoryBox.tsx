@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
 import { TOKEN_DECIMALS, tokenMeta } from "./config";
-import { fetchSwapHistory, type SwapSummary } from "./history";
+import { fetchSwapHistory, type SwapSummary } from "./data";
 import { shortenAddress } from "./utils";
 
 // -----------------------------------------------------------------------------
@@ -18,7 +18,7 @@ const EXPLORER_BASE = "https://explorer.testnet.tempo.xyz/tx/";
 
 interface HistoryBoxProps {
   address: Address;
-  refreshKey: number;
+  blockNumber: bigint;
 }
 
 interface HistoryState {
@@ -31,7 +31,7 @@ interface HistoryState {
 // Component
 // -----------------------------------------------------------------------------
 
-export function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
+export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
   const [state, setState] = useState<HistoryState>({
     loading: true,
     error: null,
@@ -42,17 +42,19 @@ export function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
     let cancelled = false;
 
     async function load() {
-      setState((s) => ({ ...s, loading: true, error: null }));
+      // Keep existing swaps while loading (stale-while-revalidate)
+      setState((s) => ({ ...s, loading: true }));
 
       try {
-        const swaps = await fetchSwapHistory(address, 20);
+        const swaps = await fetchSwapHistory(address, blockNumber, 20);
         if (!cancelled) {
           setState({ loading: false, error: null, swaps });
         }
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : "failed to load history";
-          setState({ loading: false, error: message, swaps: [] });
+          // Keep existing swaps on error too
+          setState((s) => ({ ...s, loading: false, error: message }));
         }
       }
     }
@@ -62,7 +64,7 @@ export function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
     return () => {
       cancelled = true;
     };
-  }, [address, refreshKey]);
+  }, [address, blockNumber]);
 
   const formatAmount = (amount: bigint) => {
     const num = Number(formatUnits(amount, TOKEN_DECIMALS));
@@ -80,9 +82,9 @@ export function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
     <section className="panel">
       <div className="panel-title">// trade history</div>
       <div className="history">
-        {state.loading ? (
+        {state.loading && state.swaps.length === 0 ? (
           <div className="history-loading">loading...</div>
-        ) : state.error ? (
+        ) : state.error && state.swaps.length === 0 ? (
           <div className="history-error">{state.error}</div>
         ) : state.swaps.length === 0 ? (
           <div className="history-empty">no swaps found</div>
@@ -124,4 +126,3 @@ export function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
     </section>
   );
 }
-

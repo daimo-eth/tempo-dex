@@ -3,8 +3,9 @@ import React from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "./config";
-import { getSwapPath } from "./quote";
+import { getSwapPath } from "./data";
 import { getTokenDepth } from "./swap";
+import { Label } from "./text";
 import type { QuoteState } from "./types";
 import {
   BOX_CORNER,
@@ -75,18 +76,22 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
       }
 
       // Amount and label for on-path nodes only
-      let rightCol = "";
+      let rightContent: React.ReactNode = null;
       if (isOnPath && !isNoOp) {
         const amt = amountByNode.get(addr);
         if (amt !== undefined) {
           const formatted = Number(formatUnits(amt, TOKEN_DECIMALS));
-          let label = "";
-          if (addr === inputNode) label = " INPUT";
+          let label: React.ReactNode = null;
+          if (addr === inputNode) label = <Label> INPUT</Label>;
           if (addr === outputNode && inputNode !== outputNode)
-            label = " OUTPUT";
-          rightCol = `$${formatted.toFixed(2)}${label}`;
+            label = <Label> OUTPUT</Label>;
+          rightContent = (
+            <>
+              ${formatted.toFixed(2)}{label}
+            </>
+          );
         } else if (quote.loading) {
-          rightCol = "...";
+          rightContent = "...";
         }
       }
 
@@ -97,7 +102,7 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
           className={`tree-line ${isOnPath ? "on-path" : "off-path"}`}
         >
           <span className="left">{leftCol}</span>
-          {rightCol && <span className="right">{rightCol}</span>}
+          {rightContent && <span className="right">{rightContent}</span>}
         </div>
       );
     };

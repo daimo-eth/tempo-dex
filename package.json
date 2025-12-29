@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --sourcemap --servedir=.",
     "build": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --minify && cp index.html dist/index.html",
-    "start": "serve dist -l ${PORT:-3000}",
+    "start": "serve dist -l ${PORT:-8080}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },

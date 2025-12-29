@@ -263,14 +263,15 @@ export function SwapBox({
       });
   }, [connectors]);
 
-  // Button state
+  // Button state - allow actions if we have valid quote data, even during background refresh
+  const hasValidQuote = quote.data && !quote.error;
+
   const canApprove =
     !isNoOp &&
     !insufficientBalance &&
     !isApprovePending &&
     amountIn > 0n &&
-    !quote.error &&
-    !quote.loading;
+    hasValidQuote;
 
   const canSwap =
     !isNoOp &&
@@ -278,8 +279,7 @@ export function SwapBox({
     !isSwapPending &&
     !needsApproval &&
     amountOut > 0n &&
-    !quote.error &&
-    !quote.loading;
+    hasValidQuote;
 
   // Render action button(s)
   const renderActionButtons = () => {
@@ -415,9 +415,9 @@ export function SwapBox({
         <div className="quote">
           {isNoOp ? (
             <div>no-op</div>
-          ) : quote.loading ? (
+          ) : quote.loading && !quote.data ? (
             <div>loading quote...</div>
-          ) : quote.error ? (
+          ) : quote.error && !quote.data ? (
             <div className="error">{quote.error}</div>
           ) : amountOut > 0n ? (
             <>
