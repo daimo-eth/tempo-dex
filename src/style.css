@@ -327,6 +327,11 @@ input:focus {
   text-decoration: underline;
 }
 
+.wallet-row {
+  display: flex;
+  justify-content: space-between;
+}
+
 .wallet-options {
   display: grid;
   gap: 8px;
@@ -351,6 +356,32 @@ input:focus {
 }
 
 .btn-connector:hover {
+  background: #e8eef4;
+}
+
+.btn-split {
+  display: flex;
+  gap: 0;
+}
+
+.btn-split-left,
+.btn-split-right {
+  flex: 1;
+  padding: 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #1a1a2e;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  cursor: pointer;
+}
+
+.btn-split-left {
+  border-right: none;
+}
+
+.btn-split-left:hover,
+.btn-split-right:hover {
   background: #e8eef4;
 }
 

@@ -31,6 +31,7 @@ import { tempoTestnet } from "./wagmi";
 
 const REQUIRED_CHAIN_ID = tempoTestnet.id;
 const SLIPPAGE_TOLERANCE = 0.005; // 0.5%
+const EXPLORER_URL = tempoTestnet.blockExplorers.default.url;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -321,18 +322,46 @@ export function SwapBox({
       return (
         <div className="wallet-options">
           <div className="wallet-options-title">select wallet</div>
-          {filteredConnectors.map((connector) => (
-            <button
-              key={connector.uid}
-              className="btn-connector"
-              onClick={() => {
-                connect({ connector });
-                setShowWalletOptions(false);
-              }}
-            >
-              {connector.name}
-            </button>
-          ))}
+          {filteredConnectors.flatMap((connector) => {
+            const isWebAuthn = connector.name === "EOA (WebAuthn)";
+            if (isWebAuthn) {
+              // Show sign-in and sign-up as split button for Native passkey
+              return (
+                <div key={connector.uid} className="btn-split">
+                  <button
+                    className="btn-split-left"
+                    onClick={() => {
+                      connect({ connector, capabilities: { type: "sign-up" } });
+                      setShowWalletOptions(false);
+                    }}
+                  >
+                    Sign up
+                  </button>
+                  <button
+                    className="btn-split-right"
+                    onClick={() => {
+                      connect({ connector });
+                      setShowWalletOptions(false);
+                    }}
+                  >
+                    Log in
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <button
+                key={connector.uid}
+                className="btn-connector"
+                onClick={() => {
+                  connect({ connector });
+                  setShowWalletOptions(false);
+                }}
+              >
+                {connector.name}
+              </button>
+            );
+          })}
           <button
             className="btn-link"
             onClick={() => setShowWalletOptions(false)}
@@ -364,9 +393,19 @@ export function SwapBox({
           >
             {isSwitching ? "SWITCHING..." : "SWITCH CHAIN"}
           </button>
-          <button className="btn-link" onClick={handleDisconnect}>
-            connected {shortenAddress(address!)}
-          </button>
+          <div className="wallet-row">
+            <button className="btn-link" onClick={handleDisconnect}>
+              {shortenAddress(address!)}
+            </button>
+            <a
+              className="btn-link"
+              href={`${EXPLORER_URL}/address/${address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              show account
+            </a>
+          </div>
         </div>
       );
     }
@@ -391,9 +430,19 @@ export function SwapBox({
             {isSwapPending ? "SWAPPING..." : "SWAP"}
           </button>
         )}
-        <button className="btn-link" onClick={handleDisconnect}>
-          connected {shortenAddress(address!)}
-        </button>
+        <div className="wallet-row">
+          <button className="btn-link" onClick={handleDisconnect}>
+            {shortenAddress(address!)}
+          </button>
+          <a
+            className="btn-link"
+            href={`${EXPLORER_URL}/address/${address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            show account
+          </a>
+        </div>
       </div>
     );
   };

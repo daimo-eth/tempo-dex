@@ -78,50 +78,47 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     return tokenMeta[token]?.symbol ?? shortenAddress(token);
   };
 
+  // Don't render anything if no swaps
+  if (state.swaps.length === 0) {
+    return null;
+  }
+
   return (
     <section className="panel">
       <div className="panel-title">// trade history</div>
       <div className="history">
-        {state.swaps.length > 0 ? (
-          <table className="history-table">
-            <thead>
-              <tr>
-                <th>block</th>
-                <th>in</th>
-                <th>out</th>
-                <th>tx</th>
+        <table className="history-table">
+          <thead>
+            <tr>
+              <th>block</th>
+              <th>in</th>
+              <th>out</th>
+              <th>tx</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.swaps.map((swap) => (
+              <tr key={swap.txHash}>
+                <td>{swap.blockNumber.toString()}</td>
+                <td>
+                  {formatAmount(swap.amountIn)} {getSymbol(swap.tokenIn)}
+                </td>
+                <td>
+                  {formatAmount(swap.amountOut)} {getSymbol(swap.tokenOut)}
+                </td>
+                <td>
+                  <a
+                    href={`${EXPLORER_BASE}${swap.txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {shortenAddress(swap.txHash)}
+                  </a>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {state.swaps.map((swap) => (
-                <tr key={swap.txHash}>
-                  <td>{swap.blockNumber.toString()}</td>
-                  <td>
-                    {formatAmount(swap.amountIn)} {getSymbol(swap.tokenIn)}
-                  </td>
-                  <td>
-                    {formatAmount(swap.amountOut)} {getSymbol(swap.tokenOut)}
-                  </td>
-                  <td>
-                    <a
-                      href={`${EXPLORER_BASE}${swap.txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {shortenAddress(swap.txHash)}
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : state.loading ? (
-          <div className="history-loading">loading...</div>
-        ) : state.error ? (
-          <div className="history-error">{state.error}</div>
-        ) : (
-          <div className="history-empty">no swaps found</div>
-        )}
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );
