@@ -235,6 +235,51 @@ input:focus {
   background: #e8eef4;
 }
 
+.history {
+  font-size: 12px;
+}
+
+.history-loading,
+.history-empty,
+.history-error {
+  color: #6b7280;
+  padding: 8px 0;
+}
+
+.history-error {
+  color: #dc2626;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table th,
+.history-table td {
+  text-align: left;
+  padding: 6px 8px 6px 0;
+  border-bottom: 1px solid #c5d0db;
+}
+
+.history-table th {
+  font-weight: 600;
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.history-table td {
+  color: #1a1a2e;
+}
+
+.history-table a {
+  color: #2563eb;
+}
+
+.history-table a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 640px) {
   .page {
     padding: 28px 16px 48px;

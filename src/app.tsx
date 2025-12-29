@@ -5,12 +5,17 @@ import { createRoot } from "react-dom/client";
 import { parseUnits, type Address } from "viem";
 import { WagmiProvider, useAccount } from "wagmi";
 import { AssetTreeBox } from "./AssetTreeBox";
+import { HistoryBox } from "./HistoryBox";
 import { SwapBox } from "./SwapBox";
 import { TOKEN_DECIMALS } from "./config";
 import { fetchQuote } from "./quote";
 import "./style.css";
 import type { QuoteState } from "./types";
 import { config } from "./wagmi";
+
+// Debug: set to an address to override connected wallet (null in prod)
+// const DEBUG_WALLET_ADDR: Address | null = "0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D";
+const DEBUG_WALLET_ADDR: Address | null = null;
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -41,7 +46,11 @@ function App() {
 // -----------------------------------------------------------------------------
 
 function Page() {
-  const { address, isConnected } = useAccount();
+  const { address: connectedAddress, isConnected: walletConnected } = useAccount();
+
+  // Debug override for testing
+  const address = DEBUG_WALLET_ADDR ?? connectedAddress;
+  const isConnected = DEBUG_WALLET_ADDR ? true : walletConnected;
 
   // Core state - minimal
   const [fromToken, setFromToken] = useState<Address>(DEFAULT_FROM);
@@ -170,24 +179,6 @@ function Page() {
         <HistoryBox address={address} refreshKey={swapCount} />
       )}
     </main>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// HistoryBox (placeholder)
-// -----------------------------------------------------------------------------
-
-interface HistoryBoxProps {
-  address: Address;
-  refreshKey: number;
-}
-
-function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
-  return (
-    <section className="panel">
-      <div className="panel-title">// trade history</div>
-      <div className="history-placeholder">coming soon...</div>
-    </section>
   );
 }
 
