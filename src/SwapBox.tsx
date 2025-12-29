@@ -2,17 +2,24 @@
 import React, { useMemo } from "react";
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
-import { Actions, Addresses } from "viem/tempo";
 import {
   useAccount,
   useConnect,
   useConnectors,
   useDisconnect,
+  useReadContract,
   useReadContracts,
-  useSendCallsSync,
   useSwitchChain,
+  useWriteContract,
 } from "wagmi";
-import { ERC20_ABI, TOKENS, TOKEN_DECIMALS, tokenMeta } from "./config";
+import {
+  DEX_ABI,
+  DEX_ADDRESS,
+  ERC20_ABI,
+  TOKENS,
+  TOKEN_DECIMALS,
+  tokenMeta,
+} from "./config";
 import type { QuoteState } from "./types";
 import { shortenAddress } from "./utils";
 import { tempoTestnet } from "./wagmi";
@@ -56,13 +63,23 @@ export function SwapBox({
   const { address, isConnected, chainId: walletChainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
-  const sendCalls = useSendCallsSync();
   const connectors = useConnectors();
-  const { connect } = useConnect();
+  const { connect } = useConnect({
+    mutation: {
+      onMutate: ({ connector }) => {
+        console.log("[connect] attempting", connector.name);
+      },
+      onSuccess: (data) => {
+        console.log("[connect] success", data);
+      },
+      onError: (error, { connector }) => {
+        console.error("[connect] error", connector.name, error);
+      },
+    },
+  });
 
   const [showWalletOptions, setShowWalletOptions] = React.useState(false);
 
-  const isSwapPending = sendCalls.isPending;
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
   const isNoOp = fromToken === toToken;
 
@@ -101,6 +118,99 @@ export function SwapBox({
     return map;
   }, [balanceResults]);
 
+  // Fetch allowance for fromToken (spender is DEX)
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+    address: fromToken,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: address ? [address, DEX_ADDRESS] : undefined,
+    query: { enabled: isConnected && !!address },
+  });
+
+  const currentAllowance = (allowance as bigint) ?? 0n;
+  const needsApproval = amountIn > 0n && currentAllowance < amountIn;
+
+  // Approve transaction
+  const approveWrite = useWriteContract();
+  const isApprovePending = approveWrite.isPending;
+
+  const handleApprove = () => {
+    console.log("[approve] handleApprove called", {
+      fromToken,
+      spender: DEX_ADDRESS,
+      amount: amountIn.toString(),
+    });
+
+    approveWrite.writeContract(
+      {
+        address: fromToken,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [DEX_ADDRESS, amountIn],
+      },
+      {
+        onSuccess: (hash) => {
+          console.log("[approve] success", hash);
+          // Refetch allowance after approval
+          refetchAllowance();
+        },
+        onError: (error) => {
+          console.error("[approve] error", error);
+        },
+      }
+    );
+  };
+
+  // Swap transaction
+  const swapWrite = useWriteContract();
+  const isSwapPending = swapWrite.isPending;
+
+  // Quote info
+  const amountOut = quote.data?.amountOut ?? 0n;
+  const amountOutFormatted = Number(formatUnits(amountOut, TOKEN_DECIMALS));
+  const rate = quote.data?.rate ?? 0;
+
+  // Slippage
+  const minAmountOut =
+    amountOut > 0n
+      ? (amountOut * BigInt(Math.floor((1 - SLIPPAGE_TOLERANCE) * 1000))) /
+        1000n
+      : 0n;
+
+  const handleSwap = () => {
+    console.log("[swap] handleSwap called", {
+      fromToken,
+      toToken,
+      amountIn: amountIn.toString(),
+      minAmountOut: minAmountOut.toString(),
+    });
+
+    if (amountIn === 0n) {
+      console.log("[swap] early return - zero amount");
+      return;
+    }
+
+    swapWrite.writeContract(
+      {
+        address: DEX_ADDRESS,
+        abi: DEX_ABI,
+        functionName: "swapExactAmountIn",
+        args: [fromToken, toToken, amountIn, minAmountOut],
+      },
+      {
+        onSuccess: (hash) => {
+          console.log("[swap] success", hash);
+          onSwapSuccess();
+          // Refetch allowance in case it was consumed
+          refetchAllowance();
+        },
+        onError: (error) => {
+          console.error("[swap] error", error);
+        },
+      }
+    );
+  };
+
   // Token lists for dropdowns
   const tokensByBalance = useMemo(() => {
     return Object.values(tokenMeta).sort((a, b) => {
@@ -125,61 +235,6 @@ export function SwapBox({
   const insufficientBalance =
     isConnected && parsedAmount > fromBalanceFormatted;
 
-  // Quote info
-  const amountOut = quote.data?.amountOut ?? 0n;
-  const amountOutFormatted = Number(formatUnits(amountOut, TOKEN_DECIMALS));
-  const rate = quote.data?.rate ?? 0;
-
-  // Slippage
-  const minAmountOut =
-    amountOut > 0n
-      ? (amountOut * BigInt(Math.floor((1 - SLIPPAGE_TOLERANCE) * 1000))) /
-        1000n
-      : 0n;
-
-  // Swap handler
-  const handleSwap = () => {
-    console.log("[swap] handleSwap called", {
-      fromToken,
-      toToken,
-      amountIn: amountIn.toString(),
-      minAmountOut: minAmountOut.toString(),
-    });
-
-    if (amountIn === 0n) {
-      console.log("[swap] early return - zero amount");
-      return;
-    }
-
-    const calls = [
-      Actions.token.approve.call({
-        amount: amountIn,
-        spender: Addresses.stablecoinExchange,
-        token: fromToken,
-      }),
-      Actions.dex.sell.call({
-        amountIn,
-        minAmountOut,
-        tokenIn: fromToken,
-        tokenOut: toToken,
-      }),
-    ];
-
-    console.log("[swap] sending calls", calls);
-    sendCalls.sendCallsSync(
-      { calls },
-      {
-        onSuccess: (data) => {
-          console.log("[swap] success", data);
-          onSwapSuccess();
-        },
-        onError: (error) => {
-          console.error("[swap] error", error);
-        },
-      }
-    );
-  };
-
   const handleDisconnect = () => {
     if (window.confirm("Disconnect wallet?")) {
       disconnect();
@@ -202,20 +257,112 @@ export function SwapBox({
     return connectors
       .filter((c) => !(c.name === "Injected" && hasSpecificInjected))
       .sort((a, b) => {
-        if (a.type === "injected" && b.type !== "injected") return -1;
-        if (a.type !== "injected" && b.type === "injected") return 1;
-        return 0;
+        const aInj = a.type === "injected" ? 1 : 0;
+        const bInj = b.type === "injected" ? 1 : 0;
+        return aInj - bInj;
       });
   }, [connectors]);
 
-  // Can swap?
+  // Button state
+  const canApprove =
+    !isNoOp &&
+    !insufficientBalance &&
+    !isApprovePending &&
+    amountIn > 0n &&
+    !quote.error &&
+    !quote.loading;
+
   const canSwap =
     !isNoOp &&
     !insufficientBalance &&
     !isSwapPending &&
+    !needsApproval &&
     amountOut > 0n &&
     !quote.error &&
     !quote.loading;
+
+  // Render action button(s)
+  const renderActionButtons = () => {
+    if (showWalletOptions) {
+      return (
+        <div className="wallet-options">
+          <div className="wallet-options-title">select wallet</div>
+          {filteredConnectors.map((connector) => (
+            <button
+              key={connector.uid}
+              className="btn-connector"
+              onClick={() => {
+                connect({ connector });
+                setShowWalletOptions(false);
+              }}
+            >
+              {connector.name}
+            </button>
+          ))}
+          <button
+            className="btn-link"
+            onClick={() => setShowWalletOptions(false)}
+          >
+            cancel
+          </button>
+        </div>
+      );
+    }
+
+    if (!isConnected) {
+      return (
+        <button
+          className="btn-primary"
+          onClick={() => setShowWalletOptions(true)}
+        >
+          CONNECT
+        </button>
+      );
+    }
+
+    if (isWrongChain) {
+      return (
+        <div className="action-section">
+          <button
+            className="btn-primary"
+            disabled={isSwitching}
+            onClick={() => switchChain({ chainId: REQUIRED_CHAIN_ID })}
+          >
+            {isSwitching ? "SWITCHING..." : "SWITCH CHAIN"}
+          </button>
+          <button className="btn-link" onClick={handleDisconnect}>
+            connected {shortenAddress(address!)}
+          </button>
+        </div>
+      );
+    }
+
+    // Connected and on correct chain
+    return (
+      <div className="action-section">
+        {needsApproval ? (
+          <button
+            className="btn-primary"
+            disabled={!canApprove}
+            onClick={handleApprove}
+          >
+            {isApprovePending ? "APPROVING..." : "APPROVE"}
+          </button>
+        ) : (
+          <button
+            className="btn-primary"
+            disabled={!canSwap}
+            onClick={handleSwap}
+          >
+            {isSwapPending ? "SWAPPING..." : "SWAP"}
+          </button>
+        )}
+        <button className="btn-link" onClick={handleDisconnect}>
+          connected {shortenAddress(address!)}
+        </button>
+      </div>
+    );
+  };
 
   return (
     <section className="panel">
@@ -288,62 +435,7 @@ export function SwapBox({
           )}
         </div>
 
-        {showWalletOptions ? (
-          <div className="wallet-options">
-            <div className="wallet-options-title">select wallet</div>
-            {filteredConnectors.map((connector) => (
-              <button
-                key={connector.uid}
-                className="btn-connector"
-                onClick={() => {
-                  connect({ connector });
-                  setShowWalletOptions(false);
-                }}
-              >
-                {connector.name}
-              </button>
-            ))}
-            <button
-              className="btn-link"
-              onClick={() => setShowWalletOptions(false)}
-            >
-              cancel
-            </button>
-          </div>
-        ) : !isConnected ? (
-          <button
-            className="btn-primary"
-            onClick={() => setShowWalletOptions(true)}
-          >
-            CONNECT
-          </button>
-        ) : isWrongChain ? (
-          <div className="action-section">
-            <button
-              className="btn-primary"
-              disabled={isSwitching}
-              onClick={() => switchChain({ chainId: REQUIRED_CHAIN_ID })}
-            >
-              {isSwitching ? "SWITCHING..." : "SWITCH CHAIN"}
-            </button>
-            <button className="btn-link" onClick={handleDisconnect}>
-              connected {shortenAddress(address!)}
-            </button>
-          </div>
-        ) : (
-          <div className="action-section">
-            <button
-              className="btn-primary"
-              disabled={!canSwap}
-              onClick={handleSwap}
-            >
-              {isSwapPending ? "SWAPPING..." : "SWAP"}
-            </button>
-            <button className="btn-link" onClick={handleDisconnect}>
-              connected {shortenAddress(address!)}
-            </button>
-          </div>
-        )}
+        {renderActionButtons()}
       </div>
     </section>
   );

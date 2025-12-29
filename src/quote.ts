@@ -1,8 +1,7 @@
 // Quote fetching logic for Tempo DEX
 import type { Address } from "viem";
 import { createPublicClient, formatUnits, http } from "viem";
-import { Actions } from "viem/tempo";
-import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "./config";
+import { DEX_ABI, DEX_ADDRESS, ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "./config";
 import type { Quote } from "./types";
 import { tempoTestnet } from "./wagmi";
 
@@ -109,24 +108,15 @@ export async function fetchQuote(
         tokenMeta[tokenOut]?.symbol
       );
 
-      // Use viem/tempo Actions to simulate the quote
-      const quoteCall = Actions.dex.getSellQuote.call({
-        tokenIn,
-        tokenOut,
-        amountIn: currentAmount,
-      });
-
-      const result = await client.call({
-        ...quoteCall,
+      // Use DEX contract's quoteSwapExactAmountIn
+      const hopAmount = await client.readContract({
+        address: DEX_ADDRESS,
+        abi: DEX_ABI,
+        functionName: "quoteSwapExactAmountIn",
+        args: [tokenIn, tokenOut, currentAmount],
         blockNumber: block,
       });
 
-      if (!result.data) {
-        return { error: `no quote data for hop ${i}` };
-      }
-
-      // Decode the result (uint256)
-      const hopAmount = BigInt(result.data);
       amounts.push(hopAmount);
       currentAmount = hopAmount;
 

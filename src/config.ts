@@ -5,7 +5,7 @@ export const ROOT_TOKEN: Address = "0x20c0000000000000000000000000000000000000";
 // Token decimals (all Tempo stablecoins use 6)
 export const TOKEN_DECIMALS = 6;
 
-// Minimal ERC20 ABI for balance reading
+// Minimal ERC20 ABI for balance/allowance reading and approval
 export const ERC20_ABI = [
   {
     name: "balanceOf",
@@ -14,25 +14,56 @@ export const ERC20_ABI = [
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
-] as const;
-
-// Mock router address for swap transactions
-export const ROUTER_ADDRESS: Address =
-  "0x20c0000000000000000000000000000000000999";
-
-// Router ABI for swap
-export const ROUTER_ABI = [
   {
-    name: "swap",
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "approve",
     type: "function",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "tokenIn", type: "address" },
-      { name: "tokenOut", type: "address" },
-      { name: "amountIn", type: "uint256" },
-      { name: "minAmountOut", type: "uint256" },
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
     ],
-    outputs: [{ name: "amountOut", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+// Tempo DEX address
+export const DEX_ADDRESS: Address =
+  "0xdec0000000000000000000000000000000000000";
+
+// DEX ABI (subset for swap functions)
+export const DEX_ABI = [
+  {
+    name: "swapExactAmountIn",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { type: "address", name: "tokenIn" },
+      { type: "address", name: "tokenOut" },
+      { type: "uint128", name: "amountIn" },
+      { type: "uint128", name: "minAmountOut" },
+    ],
+    outputs: [{ type: "uint128", name: "amountOut" }],
+  },
+  {
+    name: "quoteSwapExactAmountIn",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { type: "address", name: "tokenIn" },
+      { type: "address", name: "tokenOut" },
+      { type: "uint128", name: "amountIn" },
+    ],
+    outputs: [{ type: "uint128", name: "amountOut" }],
   },
 ] as const;
 

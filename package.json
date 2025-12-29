@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --sourcemap --servedir=.",
     "build": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --minify && cp index.html dist/index.html",
+    "start": "serve dist -l ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
+    "serve": "^14.2.4",
     "@tanstack/react-query": "^5.90.14",
     "connectkit": "^1.9.1",
     "react": "^18.3.1",
