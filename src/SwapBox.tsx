@@ -147,7 +147,12 @@ export function SwapBox({
     if (approveWrite.data && !isApproveConfirming && approveWrite.isSuccess) {
       refetchAllowance();
     }
-  }, [approveWrite.data, isApproveConfirming, approveWrite.isSuccess, refetchAllowance]);
+  }, [
+    approveWrite.data,
+    isApproveConfirming,
+    approveWrite.isSuccess,
+    refetchAllowance,
+  ]);
 
   const isApprovePending = approveWrite.isPending || isApproveConfirming;
 
@@ -190,7 +195,13 @@ export function SwapBox({
       onSwapSuccess();
       refetchAllowance();
     }
-  }, [swapWrite.data, isSwapConfirming, swapWrite.isSuccess, onSwapSuccess, refetchAllowance]);
+  }, [
+    swapWrite.data,
+    isSwapConfirming,
+    swapWrite.isSuccess,
+    onSwapSuccess,
+    refetchAllowance,
+  ]);
 
   const isSwapPending = swapWrite.isPending || isSwapConfirming;
 
@@ -438,7 +449,7 @@ export function SwapBox({
         <div className="quote">
           {isNoOp ? (
             <div>no-op</div>
-          ) : quote.loading && !quote.data ? (
+          ) : quote.loading && !quote.data && !quote.error ? (
             <div>loading quote...</div>
           ) : quote.error ? (
             <>

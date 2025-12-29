@@ -135,7 +135,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     const pairName = `${childSymbol}-${parentSymbol}`;
 
     // Show loading only if no existing data
-    if (liquidity.loading && !liquidity.data) {
+    if (liquidity.loading && !liquidity.data && !liquidity.error) {
       return (
         <div className="liquidity">
           <div className="liquidity-title"># {pairName}</div>

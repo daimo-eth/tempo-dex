@@ -122,9 +122,11 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
         addLine(ROOT_TOKEN, false);
       }
     } else {
-      // Single node (no-op)
-      addLine(path[0], false);
+      // Single node (no-op) - show token above pathUSD
       if (path[0] !== ROOT_TOKEN) {
+        addLine(path[0], true); // Use upward corner since it's above pathUSD
+        addLine(ROOT_TOKEN, false);
+      } else {
         addLine(ROOT_TOKEN, false);
       }
     }
