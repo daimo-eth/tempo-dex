@@ -1,13 +1,13 @@
 // AssetsBox - displays token tree with selected pair liquidity
 import React, { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
-import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta, TOKENS } from "./config";
+import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta, TOKENS } from "../config";
 import {
   fetchPairLiquidity,
   getNonRootTokens,
   type PairLiquidity,
-} from "./data";
-import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "./utils";
+} from "../data";
+import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "../utils";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -206,3 +206,4 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     </section>
   );
 }
+

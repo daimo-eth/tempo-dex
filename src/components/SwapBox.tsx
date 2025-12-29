@@ -1,15 +1,18 @@
 // SwapBox - swap form, wallet connection, and execution
 import React, { useMemo } from "react";
 import type { Address } from "viem";
-import { formatUnits, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseUnits } from "viem";
 import {
   useAccount,
+  useCapabilities,
   useConnect,
   useConnectors,
   useDisconnect,
   useReadContract,
   useReadContracts,
+  useSendCalls,
   useSwitchChain,
+  useWaitForCallsStatus,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
@@ -20,10 +23,10 @@ import {
   TOKENS,
   TOKEN_DECIMALS,
   tokenMeta,
-} from "./config";
-import type { QuoteState } from "./types";
-import { shortenAddress } from "./utils";
-import { tempoTestnet } from "./wagmi";
+} from "../config";
+import type { QuoteState } from "../types";
+import { shortenAddress } from "../utils";
+import { tempoTestnet } from "../wagmi";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -81,6 +84,16 @@ export function SwapBox({
   });
 
   const [showWalletOptions, setShowWalletOptions] = React.useState(false);
+
+  // Check if wallet supports batched calls (atomicBatch capability)
+  const { data: capabilities } = useCapabilities({
+    query: { enabled: isConnected },
+  });
+  const supportsBatchedCalls = useMemo(() => {
+    if (!capabilities || !walletChainId) return false;
+    const chainCaps = capabilities[walletChainId];
+    return chainCaps?.atomicBatch?.supported === true;
+  }, [capabilities, walletChainId]);
 
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
   const isNoOp = fromToken === toToken;
@@ -246,6 +259,77 @@ export function SwapBox({
     );
   };
 
+  // Batched swap (approve + swap in one call) for wallets that support it
+  const batchedSwap = useSendCalls();
+
+  // Wait for batched calls to complete
+  const { data: batchedStatus, isLoading: isBatchedConfirming } =
+    useWaitForCallsStatus({
+      id: batchedSwap.data?.id,
+      query: {
+        enabled: !!batchedSwap.data?.id,
+      },
+    });
+
+  React.useEffect(() => {
+    if (batchedStatus?.status === "success") {
+      onSwapSuccess();
+      refetchAllowance();
+    }
+  }, [batchedStatus?.status, onSwapSuccess, refetchAllowance]);
+
+  const isBatchedPending = batchedSwap.isPending || isBatchedConfirming;
+
+  const handleBatchedSwap = () => {
+    console.log("[batchedSwap] handleBatchedSwap called", {
+      fromToken,
+      toToken,
+      amountIn: amountIn.toString(),
+      minAmountOut: minAmountOut.toString(),
+      needsApproval,
+    });
+
+    if (amountIn === 0n) {
+      console.log("[batchedSwap] early return - zero amount");
+      return;
+    }
+
+    // Build calls array - include approve if needed
+    const calls: { to: Address; data: `0x${string}` }[] = [];
+
+    if (needsApproval) {
+      calls.push({
+        to: fromToken,
+        data: encodeFunctionData({
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [DEX_ADDRESS, amountIn],
+        }),
+      });
+    }
+
+    calls.push({
+      to: DEX_ADDRESS,
+      data: encodeFunctionData({
+        abi: DEX_ABI,
+        functionName: "swapExactAmountIn",
+        args: [fromToken, toToken, amountIn, minAmountOut],
+      }),
+    });
+
+    batchedSwap.sendCalls(
+      {
+        calls,
+        chainId: REQUIRED_CHAIN_ID,
+      },
+      {
+        onError: (error) => {
+          console.error("[batchedSwap] error", error);
+        },
+      }
+    );
+  };
+
   // Token lists for dropdowns
   const tokensByBalance = useMemo(() => {
     return Object.values(tokenMeta).sort((a, b) => {
@@ -316,6 +400,14 @@ export function SwapBox({
     amountOut > 0n &&
     hasValidQuote;
 
+  // Batched swap can proceed even if needsApproval (it will include approve in the batch)
+  const canBatchedSwap =
+    !isNoOp &&
+    !insufficientBalance &&
+    !isBatchedPending &&
+    amountOut > 0n &&
+    hasValidQuote;
+
   // Render action button(s)
   const renderActionButtons = () => {
     if (showWalletOptions) {
@@ -331,7 +423,11 @@ export function SwapBox({
                   <button
                     className="btn-split-left"
                     onClick={() => {
-                      connect({ connector, capabilities: { type: "sign-up" } });
+                      // capabilities is a tempo.ts connector param for sign-up/sign-in
+                      connect({
+                        connector,
+                        capabilities: { type: "sign-up" },
+                      } as any);
                       setShowWalletOptions(false);
                     }}
                   >
@@ -411,6 +507,35 @@ export function SwapBox({
     }
 
     // Connected and on correct chain
+    // Use batched flow if wallet supports it, otherwise traditional approve → swap
+    if (supportsBatchedCalls) {
+      return (
+        <div className="action-section">
+          <button
+            className="btn-primary"
+            disabled={!canBatchedSwap}
+            onClick={handleBatchedSwap}
+          >
+            {isBatchedPending ? "SWAPPING..." : "SWAP"}
+          </button>
+          <div className="wallet-row">
+            <button className="btn-link" onClick={handleDisconnect}>
+              {shortenAddress(address!)}
+            </button>
+            <a
+              className="btn-link"
+              href={`${EXPLORER_URL}/address/${address}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              show account
+            </a>
+          </div>
+        </div>
+      );
+    }
+
+    // Traditional approve → swap flow
     return (
       <div className="action-section">
         {needsApproval ? (
@@ -526,3 +651,4 @@ export function SwapBox({
     </section>
   );
 }
+

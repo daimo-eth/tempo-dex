@@ -2,9 +2,9 @@
 import React, { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
-import { TOKEN_DECIMALS, tokenMeta } from "./config";
-import { fetchSwapHistory, type SwapSummary } from "./data";
-import { shortenAddress } from "./utils";
+import { TOKEN_DECIMALS, tokenMeta } from "../config";
+import { fetchSwapHistory, type SwapSummary } from "../data";
+import { shortenAddress } from "../utils";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -52,7 +52,8 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
         }
       } catch (err) {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : "failed to load history";
+          const message =
+            err instanceof Error ? err.message : "failed to load history";
           // Keep existing swaps on error too
           setState((s) => ({ ...s, loading: false, error: message }));
         }
@@ -123,3 +124,4 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     </section>
   );
 }
+

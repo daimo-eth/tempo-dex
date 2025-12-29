@@ -2,17 +2,17 @@
 import React from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
-import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "./config";
-import { getSwapPath } from "./data";
-import { getTokenDepth } from "./swap";
-import { Label } from "./text";
-import type { QuoteState } from "./types";
+import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "../config";
+import { getSwapPath } from "../data";
+import { getTokenDepth } from "../swap";
+import { Label } from "./Text";
+import type { QuoteState } from "../types";
 import {
   BOX_CORNER,
   BOX_CORNER_UP,
   TREE_W_CHARS,
   padOrTruncate,
-} from "./utils";
+} from "../utils";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -141,3 +141,4 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
     </section>
   );
 }
+

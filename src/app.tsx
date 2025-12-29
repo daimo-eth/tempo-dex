@@ -4,13 +4,15 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { parseUnits, type Address } from "viem";
 import { WagmiProvider, useAccount } from "wagmi";
-import { AssetsBox } from "./AssetsBox";
-import { AssetTreeBox } from "./AssetTreeBox";
+import {
+  AssetsBox,
+  AssetTreeBox,
+  HistoryBox,
+  SwapBox,
+} from "./components";
 import { TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
-import { HistoryBox } from "./HistoryBox";
 import "./style.css";
-import { SwapBox } from "./SwapBox";
 import type { QuoteState } from "./types";
 import { config } from "./wagmi";
 
