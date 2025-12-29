@@ -1,35 +1,26 @@
 // Tempo DEX - Main application
-// Structure: imports, constants, App wrapper, page components, subcomponents, mount
-
-import React, { useMemo, useState } from 'react'
-import { createRoot } from 'react-dom/client'
-import { WagmiProvider, useAccount, useConnect, useDisconnect, useConnectors, useReadContracts, useSwitchChain, useSendCallsSync } from 'wagmi'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { parseUnits, formatUnits, type Address } from 'viem'
-import { Actions, Addresses } from 'viem/tempo'
-import { Hooks } from 'tempo.ts/wagmi'
-import './style.css'
-import { config, tempoTestnet } from './wagmi'
-import { ROOT_TOKEN, TOKENS, tokenMeta, ERC20_ABI, TOKEN_DECIMALS } from './config'
-import {
-  calculateSwapRoute,
-  calculateAmountAtHop,
-  getTokenDepth,
-} from './swap'
-import { TREE_W_CHARS, padOrTruncate, shortenAddress, BOX_CORNER, BOX_CORNER_UP } from './utils'
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import React, { useCallback, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { parseUnits, type Address } from "viem";
+import { WagmiProvider, useAccount } from "wagmi";
+import { AssetTreeBox } from "./AssetTreeBox";
+import { SwapBox } from "./SwapBox";
+import { TOKEN_DECIMALS } from "./config";
+import { fetchQuote } from "./quote";
+import "./style.css";
+import type { QuoteState } from "./types";
+import { config } from "./wagmi";
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
-// Debug: set to an address to override connected wallet (null in prod)
-// const DEBUG_WALLET_ADDR: Address | null = '0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D'
-const DEBUG_WALLET_ADDR: Address | null = null
+const queryClient = new QueryClient();
 
-// Required chain (Tempo Testnet for now; future: env var for mainnet)
-const REQUIRED_CHAIN_ID = tempoTestnet.id
-
-const queryClient = new QueryClient()
+// Default tokens
+const DEFAULT_FROM = "0x20c0000000000000000000000000000000000001" as Address; // AlphaUSD
+const DEFAULT_TO = "0x20c0000000000000000000000000000000000002" as Address; // BetaUSD
 
 // -----------------------------------------------------------------------------
 // App wrapper
@@ -42,30 +33,118 @@ function App() {
         <Page />
       </QueryClientProvider>
     </WagmiProvider>
-  )
+  );
 }
 
 // -----------------------------------------------------------------------------
-// Page layout
+// Page - main state and quote logic
 // -----------------------------------------------------------------------------
 
 function Page() {
-  const { address: connectedAddress, isConnected: walletConnected, chainId: walletChainId } = useAccount()
-  const { disconnect } = useDisconnect()
-  const [showWalletOptions, setShowWalletOptions] = useState(false)
-  const [fromToken, setFromToken] = useState('AlphaUSD')
-  const [toToken, setToToken] = useState('BetaUSD')
-  const [amount, setAmount] = useState('100')
-  const [swapCount, setSwapCount] = useState(0)
+  const { address, isConnected } = useAccount();
 
-  // debug override for testing balances
-  const effectiveAddress = DEBUG_WALLET_ADDR ?? connectedAddress
-  const isConnected = DEBUG_WALLET_ADDR ? true : walletConnected
+  // Core state - minimal
+  const [fromToken, setFromToken] = useState<Address>(DEFAULT_FROM);
+  const [toToken, setToToken] = useState<Address>(DEFAULT_TO);
+  const [amount, setAmount] = useState("100");
+  const [swapCount, setSwapCount] = useState(0);
 
-  const handleDisconnect = () => {
-    if (DEBUG_WALLET_ADDR) return // can't disconnect debug wallet
-    if (window.confirm('Disconnect wallet?')) disconnect()
-  }
+  // Quote state - single object
+  const [quote, setQuote] = useState<QuoteState>({
+    loading: false,
+    error: null,
+    data: null,
+  });
+
+  // Debounce ref for quote fetching
+  const quoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastQuoteParamsRef = useRef<string>("");
+
+  // Quote fetcher - clean async function, no hooks
+  const doFetchQuote = useCallback(
+    async (from: Address, to: Address, amountStr: string) => {
+      const parsed = Number(amountStr);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setQuote({ loading: false, error: null, data: null });
+        return;
+      }
+
+      if (from === to) {
+        setQuote({ loading: false, error: "same token (no-op)", data: null });
+        return;
+      }
+
+      const amountIn = parseUnits(amountStr, TOKEN_DECIMALS);
+      const paramsKey = `${from}-${to}-${amountIn.toString()}`;
+
+      // Skip if same params
+      if (paramsKey === lastQuoteParamsRef.current && quote.data) {
+        return;
+      }
+      lastQuoteParamsRef.current = paramsKey;
+
+      setQuote((prev) => ({ ...prev, loading: true, error: null }));
+
+      const result = await fetchQuote(from, to, amountIn);
+
+      if ("error" in result) {
+        setQuote({ loading: false, error: result.error, data: null });
+      } else {
+        setQuote({ loading: false, error: null, data: result.quote });
+      }
+    },
+    [quote.data]
+  );
+
+  // Debounced quote trigger - called when inputs change
+  const triggerQuote = useCallback(
+    (from: Address, to: Address, amountStr: string) => {
+      if (quoteTimeoutRef.current) {
+        clearTimeout(quoteTimeoutRef.current);
+      }
+      quoteTimeoutRef.current = setTimeout(() => {
+        doFetchQuote(from, to, amountStr);
+      }, 300);
+    },
+    [doFetchQuote]
+  );
+
+  // Input handlers that trigger quote
+  const handleFromToken = useCallback(
+    (addr: Address) => {
+      setFromToken(addr);
+      triggerQuote(addr, toToken, amount);
+    },
+    [toToken, amount, triggerQuote]
+  );
+
+  const handleToToken = useCallback(
+    (addr: Address) => {
+      setToToken(addr);
+      triggerQuote(fromToken, addr, amount);
+    },
+    [fromToken, amount, triggerQuote]
+  );
+
+  const handleAmount = useCallback(
+    (amountStr: string) => {
+      setAmount(amountStr);
+      triggerQuote(fromToken, toToken, amountStr);
+    },
+    [fromToken, toToken, triggerQuote]
+  );
+
+  // Initial quote on mount
+  React.useEffect(() => {
+    triggerQuote(fromToken, toToken, amount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSwapSuccess = useCallback(() => {
+    setSwapCount((c) => c + 1);
+    // Refetch quote after swap
+    triggerQuote(fromToken, toToken, amount);
+  }, [fromToken, toToken, amount, triggerQuote]);
 
   return (
     <main className="page">
@@ -74,462 +153,47 @@ function Page() {
         <span className="badge">testnet</span>
       </header>
 
-      <AssetTreeBox
-        fromToken={fromToken}
-        toToken={toToken}
-        amount={amount}
-      />
+      <AssetTreeBox fromToken={fromToken} toToken={toToken} quote={quote} />
 
       <SwapBox
         fromToken={fromToken}
         toToken={toToken}
         amount={amount}
-        setFromToken={setFromToken}
-        setToToken={setToToken}
-        setAmount={setAmount}
-        showWalletOptions={showWalletOptions}
-        setShowWalletOptions={setShowWalletOptions}
-        onSwapSuccess={() => setSwapCount((c) => c + 1)}
-        onDisconnect={handleDisconnect}
-        address={effectiveAddress}
-        isConnected={isConnected}
-        walletChainId={walletChainId}
+        quote={quote}
+        setFromToken={handleFromToken}
+        setToToken={handleToToken}
+        setAmount={handleAmount}
+        onSwapSuccess={handleSwapSuccess}
       />
 
-      {isConnected && effectiveAddress && (
-        <HistoryBox address={effectiveAddress} refreshKey={swapCount} />
+      {isConnected && address && (
+        <HistoryBox address={address} refreshKey={swapCount} />
       )}
     </main>
-  )
+  );
 }
 
 // -----------------------------------------------------------------------------
-// AssetTreeBox
-// -----------------------------------------------------------------------------
-
-interface AssetTreeBoxProps {
-  fromToken: string
-  toToken: string
-  amount: string
-}
-
-function AssetTreeBox({ fromToken, toToken, amount }: AssetTreeBoxProps) {
-  const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null
-  const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? ''
-
-  const symbolToAddress = useMemo(() => {
-    const entries = Object.values(tokenMeta).map((t) => [t.symbol, t.address])
-    return Object.fromEntries(entries) as Record<string, string>
-  }, [])
-
-  const route = useMemo(() => {
-    const fromAddr = symbolToAddress[fromToken] as Address | undefined
-    const toAddr = symbolToAddress[toToken] as Address | undefined
-    if (!fromAddr || !toAddr) {
-      return { inputPath: [] as Address[], outputPath: [] as Address[], highlightNodes: new Set<Address>(), hops: 0, rate: 1 }
-    }
-    return calculateSwapRoute(fromAddr, toAddr, ROOT_TOKEN, getParent)
-  }, [fromToken, toToken, symbolToAddress])
-
-  const renderTree = () => {
-    const lines: React.ReactNode[] = []
-    const parsedAmount = Number(amount) || 0
-    const { inputPath, outputPath, highlightNodes } = route
-
-    // Build hop index for amount calculation
-    const hopIndex = new Map<Address, number>()
-    let hopCount = 0
-    inputPath.forEach((addr) => { hopIndex.set(addr, hopCount); hopCount++ })
-    outputPath.forEach((addr, idx) => { if (idx > 0) hopCount++; hopIndex.set(addr, hopCount) })
-
-    // Determine INPUT/OUTPUT nodes
-    const inputNode = inputPath.length > 0 ? inputPath[0] : (outputPath.length > 0 ? outputPath[0] : null)
-    const outputNode = outputPath.length > 0 ? outputPath[outputPath.length - 1] : null
-
-    // Check if path goes through pathUSD (input and output on different branches)
-    const pathThroughRoot = outputPath.includes(ROOT_TOKEN)
-
-    const addLine = (addr: Address, useUpwardL: boolean) => {
-      const isOnPath = highlightNodes.has(addr)
-      const depth = getTokenDepth(addr, getParent)
-      const symbol = getSymbol(addr)
-
-      // Build prefix: spaces for depth, then L connector (up or down)
-      let prefix = ''
-      for (let i = 0; i < depth; i++) prefix += '    '
-      if (depth > 0) {
-        prefix = prefix.slice(0, -4) + (useUpwardL ? BOX_CORNER_UP : BOX_CORNER)
-      }
-
-      // Amount and label for on-path nodes only
-      let rightCol = ''
-      if (isOnPath) {
-        const hop = hopIndex.get(addr) ?? 0
-        const amt = calculateAmountAtHop(parsedAmount, hop)
-        let label = ''
-        if (addr === inputNode) label = ' INPUT'
-        if (addr === outputNode && inputNode !== outputNode) label = ' OUTPUT'
-        rightCol = `$${amt.toFixed(2)}${label}`
-      }
-
-      const leftCol = padOrTruncate(prefix + symbol, TREE_W_CHARS)
-      lines.push(
-        <div key={addr} className={`tree-line ${isOnPath ? 'on-path' : 'off-path'}`}>
-          <span className="left">{leftCol}</span>
-          {rightCol && <span className="right">{rightCol}</span>}
-        </div>
-      )
-    }
-
-    if (pathThroughRoot) {
-      // Cross-branch swap: input above, pathUSD center, output below
-      inputPath.forEach((addr) => addLine(addr, true))
-      outputPath.forEach((addr) => addLine(addr, false))
-    } else {
-      // Same-branch swap: all nodes above pathUSD, ordered by depth desc
-      const allNodes = [...inputPath, ...outputPath]
-      allNodes.sort((a, b) => getTokenDepth(b, getParent) - getTokenDepth(a, getParent))
-      allNodes.forEach((addr) => addLine(addr, true))
-      addLine(ROOT_TOKEN, false) // pathUSD greyed at bottom
-    }
-
-    return lines
-  }
-
-  return (
-    <section className="panel">
-      <div className="panel-title">// asset tree</div>
-      <div className="tree">{renderTree()}</div>
-    </section>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// SwapBox
-// -----------------------------------------------------------------------------
-
-interface SwapBoxProps {
-  fromToken: string
-  toToken: string
-  amount: string
-  setFromToken: (v: string) => void
-  setToToken: (v: string) => void
-  setAmount: (v: string) => void
-  showWalletOptions: boolean
-  setShowWalletOptions: (v: boolean) => void
-  onSwapSuccess: () => void
-  onDisconnect: () => void
-  address: Address | undefined
-  isConnected: boolean
-  walletChainId: number | undefined
-}
-
-function SwapBox({
-  fromToken, toToken, amount,
-  setFromToken, setToToken, setAmount,
-  showWalletOptions, setShowWalletOptions,
-  onSwapSuccess, onDisconnect,
-  address, isConnected, walletChainId,
-}: SwapBoxProps) {
-  const { switchChain, isPending: isSwitching } = useSwitchChain()
-  const sendCalls = useSendCallsSync()
-  const isSwapPending = sendCalls.isPending
-
-  const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID
-
-  const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null
-
-  const symbolToAddress = useMemo(() => {
-    const entries = Object.values(tokenMeta).map((t) => [t.symbol, t.address])
-    return Object.fromEntries(entries) as Record<string, string>
-  }, [])
-
-  // Parse amount for quote
-  const amountIn = useMemo(() => {
-    const parsed = Number(amount)
-    if (!Number.isFinite(parsed) || parsed <= 0) return 0n
-    return parseUnits(amount, TOKEN_DECIMALS)
-  }, [amount])
-
-  const fromAddr = symbolToAddress[fromToken] as Address | undefined
-  const toAddr = symbolToAddress[toToken] as Address | undefined
-
-  // Get real quote from Tempo DEX (only query when addresses are valid)
-  const canQuote = !!fromAddr && !!toAddr && amountIn > 0n && fromAddr !== toAddr
-  const { data: quoteData, error: quoteError, isLoading: quoteLoading } = Hooks.dex.useSellQuote({
-    tokenIn: fromAddr!,
-    tokenOut: toAddr!,
-    amountIn,
-    query: { enabled: canQuote },
-  })
-
-  const balanceContracts = useMemo(() => {
-    if (!address) return []
-    return TOKENS.map((tokenAddr) => ({
-      address: tokenAddr as Address,
-      abi: ERC20_ABI,
-      functionName: 'balanceOf' as const,
-      args: [address] as const,
-    }))
-  }, [address])
-
-  const { data: balanceResults } = useReadContracts({
-    contracts: balanceContracts,
-    query: { enabled: isConnected && balanceContracts.length > 0 },
-  })
-
-  const balances = useMemo(() => {
-    const map: Record<string, bigint> = {}
-    if (balanceResults) {
-      TOKENS.forEach((addr, idx) => {
-        const result = balanceResults[idx]
-        map[addr] = result?.status === 'success' ? (result.result as bigint) : 0n
-      })
-    }
-    return map
-  }, [balanceResults])
-
-  const tokensByBalance = useMemo(() => {
-    return Object.values(tokenMeta).sort((a, b) => {
-      const balA = balances[a.address] ?? 0n
-      const balB = balances[b.address] ?? 0n
-      if (balB > balA) return 1
-      if (balB < balA) return -1
-      return a.symbol.localeCompare(b.symbol)
-    })
-  }, [balances])
-
-  const tokensBySymbol = useMemo(() => {
-    return Object.values(tokenMeta).sort((a, b) => a.symbol.localeCompare(b.symbol))
-  }, [])
-
-  const isNoOp = fromToken === toToken
-  const fromBalance = fromAddr ? balances[fromAddr] ?? 0n : 0n
-  const fromBalanceFormatted = Number(formatUnits(fromBalance, TOKEN_DECIMALS))
-  const parsedAmount = Number(amount) || 0
-  const insufficientBalance = isConnected && parsedAmount > fromBalanceFormatted
-
-  // Calculate route for tree display (still uses local path calculation)
-  const route = useMemo(() => {
-    if (!fromAddr || !toAddr) {
-      return { inputPath: [] as Address[], outputPath: [] as Address[], highlightNodes: new Set<Address>(), hops: 0, rate: 1 }
-    }
-    return calculateSwapRoute(fromAddr, toAddr, ROOT_TOKEN, getParent)
-  }, [fromAddr, toAddr])
-
-  // Quote from Tempo DEX
-  const amountOut = quoteData ?? 0n
-  const amountOutFormatted = Number(formatUnits(amountOut, TOKEN_DECIMALS))
-  const effectiveRate = amountIn > 0n ? amountOutFormatted / parsedAmount : 1
-
-  // Slippage tolerance (0.5%)
-  const slippageTolerance = 0.005
-  const minAmountOut = amountOut > 0n
-    ? amountOut * BigInt(Math.floor((1 - slippageTolerance) * 1000)) / 1000n
-    : 0n
-
-  const handleSwap = () => {
-    if (!fromAddr || !toAddr || amountIn === 0n) return
-
-    const calls = [
-      Actions.token.approve.call({
-        amount: amountIn,
-        spender: Addresses.stablecoinExchange,
-        token: fromAddr,
-      }),
-      Actions.dex.sell.call({
-        amountIn,
-        minAmountOut,
-        tokenIn: fromAddr,
-        tokenOut: toAddr,
-      }),
-    ]
-
-    sendCalls.sendCallsSync({ calls }, { onSuccess: onSwapSuccess })
-  }
-
-  const formatBalance = (bal: bigint) => {
-    const num = Number(formatUnits(bal, TOKEN_DECIMALS))
-    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M'
-    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'K'
-    if (num >= 1) return num.toFixed(2)
-    return num.toFixed(4)
-  }
-
-  return (
-      <section className="panel">
-      <div className="panel-title">// swap</div>
-        <div className="swap">
-          <div className="row">
-            <div className="field">
-            <label htmlFor="fromToken">from</label>
-            <select id="fromToken" value={fromToken} onChange={(e) => setFromToken(e.target.value)}>
-              {(isConnected ? tokensByBalance : tokensBySymbol).map((t) => (
-                <option key={t.address} value={t.symbol}>
-                  {t.symbol}{isConnected ? ` (${formatBalance(balances[t.address] ?? 0n)})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-            <label htmlFor="toToken">to</label>
-            <select id="toToken" value={toToken} onChange={(e) => setToToken(e.target.value)}>
-              {tokensBySymbol.map((t) => (
-                <option key={t.address} value={t.symbol}>{t.symbol}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="field">
-          <label htmlFor="amount">amount</label>
-          <input id="amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </div>
-
-          <div className="quote">
-          {insufficientBalance && <div className="error">insufficient balance</div>}
-          {quoteError && <div className="error">
-            {quoteError.message.includes('InsufficientLiquidity') ? 'insufficient liquidity' : 'quote error'}
-          </div>}
-          {isNoOp ? (
-            <div>no-op</div>
-          ) : quoteLoading ? (
-            <div>loading quote...</div>
-          ) : amountOut > 0n ? (
-            <>
-              <div>rate: {effectiveRate.toFixed(6)}</div>
-              <div>output: {amountOutFormatted.toFixed(2)} {toToken}</div>
-            </>
-          ) : parsedAmount > 0 ? (
-            <div>enter amount</div>
-          ) : null}
-            </div>
-
-        {showWalletOptions ? (
-          <WalletOptions onClose={() => setShowWalletOptions(false)} />
-        ) : !isConnected ? (
-          <button className="btn-primary" onClick={() => setShowWalletOptions(true)}>CONNECT</button>
-        ) : isWrongChain ? (
-          <div className="action-section">
-            <button
-              className="btn-primary"
-              disabled={isSwitching}
-              onClick={() => switchChain({ chainId: REQUIRED_CHAIN_ID })}
-            >
-              {isSwitching ? 'SWITCHING...' : 'SWITCH CHAIN'}
-            </button>
-            <button className="btn-link" onClick={onDisconnect}>connected {shortenAddress(address!)}</button>
-          </div>
-        ) : (
-          <div className="action-section">
-            <button
-              className="btn-primary"
-              disabled={isNoOp || insufficientBalance || isSwapPending || !amountOut || !!quoteError}
-              onClick={handleSwap}
-            >
-              {isSwapPending ? 'SWAPPING...' : 'SWAP'}
-            </button>
-            <button className="btn-link" onClick={onDisconnect}>connected {shortenAddress(address!)}</button>
-          </div>
-        )}
-      </div>
-    </section>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// HistoryBox (placeholder - spec below)
+// HistoryBox (placeholder)
 // -----------------------------------------------------------------------------
 
 interface HistoryBoxProps {
-  address: string
-  refreshKey: number
+  address: Address;
+  refreshKey: number;
 }
 
 function HistoryBox({ address, refreshKey }: HistoryBoxProps) {
-  // TODO: implement trade history fetching and display
-  // See spec below
   return (
     <section className="panel">
       <div className="panel-title">// trade history</div>
-      <div className="history-placeholder">
-        coming soon...
-        </div>
-      </section>
-  )
-}
-
-/*
- * HistoryBox Spec
- * ===============
- *
- * Data Fetching:
- * - Use viem's getLogs() to fetch Swap events from ROUTER_ADDRESS
- * - Filter by: address === connected wallet (from args)
- * - Query params: fromBlock = earliest or recent (e.g., last 10000 blocks)
- * - Refetch when refreshKey changes (after each successful swap)
- *
- * Event signature (from ROUTER_ABI):
- *   event Swap(address indexed user, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut)
- *
- * Table columns:
- * | time       | from     | to       | amount in | amount out | tx      |
- * |------------|----------|----------|-----------|------------|---------|
- * | 2m ago     | AlphaUSD | BetaUSD  | 100.00    | 99.40      | [link]  |
- *
- * - time: relative time from block timestamp (e.g., "2m ago", "1h ago")
- * - from/to: token symbols (lookup from tokenMeta)
- * - amount in/out: formatted with 2 decimals
- * - tx: link to https://explorer.testnet.tempo.xyz/tx/{txHash}
- *
- * Implementation:
- * 1. Add Swap event to ROUTER_ABI in config.ts
- * 2. Use useEffect + viem client to fetch logs
- * 3. Parse logs, map addresses to symbols
- * 4. Sort by block number descending (newest first)
- * 5. Limit to last 20 trades
- * 6. Add CSS for .history-table with monospace styling
- */
-
-// -----------------------------------------------------------------------------
-// WalletOptions
-// -----------------------------------------------------------------------------
-
-function WalletOptions({ onClose }: { onClose: () => void }) {
-  const connectors = useConnectors()
-  const { connect } = useConnect()
-
-  const filteredConnectors = useMemo(() => {
-    const hasSpecificInjected = connectors.some((c) => c.type === 'injected' && c.name !== 'Injected')
-    return connectors
-      .filter((c) => !(c.name === 'Injected' && hasSpecificInjected))
-      .sort((a, b) => {
-        if (a.type === 'injected' && b.type !== 'injected') return -1
-        if (a.type !== 'injected' && b.type === 'injected') return 1
-        return 0
-      })
-  }, [connectors])
-
-  return (
-    <div className="wallet-options">
-      <div className="wallet-options-title">select wallet</div>
-      {filteredConnectors.map((connector) => (
-        <button
-          key={connector.uid}
-          className="btn-connector"
-          onClick={() => { connect({ connector }); onClose() }}
-        >
-          {connector.name}
-        </button>
-      ))}
-      <button className="btn-link" onClick={onClose}>cancel</button>
-    </div>
-  )
+      <div className="history-placeholder">coming soon...</div>
+    </section>
+  );
 }
 
 // -----------------------------------------------------------------------------
 // Mount
 // -----------------------------------------------------------------------------
 
-const root = createRoot(document.getElementById('app') as HTMLElement)
-root.render(<App />)
+const root = createRoot(document.getElementById("app") as HTMLElement);
+root.render(<App />);
