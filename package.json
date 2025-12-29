@@ -4,19 +4,23 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --sourcemap --servedir=. --loader:.ts=tsx",
-    "build": "esbuild src/app.ts --bundle --outfile=dist/bundle.js --minify --loader:.ts=tsx && cp index.html dist/index.html",
-    "test": "node --import tsx --test src/*.test.ts"
+    "dev": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --sourcemap --servedir=.",
+    "build": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --minify && cp index.html dist/index.html",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.14",
     "connectkit": "^1.9.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tempo.ts": "^0.12.1",
     "viem": "^2.43.3",
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "esbuild": "^0.23.1",
     "tsx": "^4.21.0",
     "typescript": "^5.6.2",

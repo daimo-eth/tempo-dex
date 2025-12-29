@@ -3,15 +3,16 @@
 
 import React, { useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { WagmiProvider, useAccount, useConnect, useDisconnect, useConnectors, useReadContracts, useWriteContract, useSwitchChain, useChainId } from 'wagmi'
+import { WagmiProvider, useAccount, useConnect, useDisconnect, useConnectors, useReadContracts, useSwitchChain, useSendCallsSync } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { parseUnits, formatUnits, type Address } from 'viem'
+import { Actions, Addresses } from 'viem/tempo'
+import { Hooks } from 'tempo.ts/wagmi'
 import './style.css'
 import { config, tempoTestnet } from './wagmi'
-import { ROOT_TOKEN, TOKENS, tokenMeta, ERC20_ABI, ROUTER_ADDRESS, ROUTER_ABI, TOKEN_DECIMALS } from './config'
+import { ROOT_TOKEN, TOKENS, tokenMeta, ERC20_ABI, TOKEN_DECIMALS } from './config'
 import {
   calculateSwapRoute,
-  calculateOutputAmount,
   calculateAmountAtHop,
   getTokenDepth,
 } from './swap'
@@ -49,7 +50,7 @@ function App() {
 // -----------------------------------------------------------------------------
 
 function Page() {
-  const { address: connectedAddress, isConnected: walletConnected } = useAccount()
+  const { address: connectedAddress, isConnected: walletConnected, chainId: walletChainId } = useAccount()
   const { disconnect } = useDisconnect()
   const [showWalletOptions, setShowWalletOptions] = useState(false)
   const [fromToken, setFromToken] = useState('AlphaUSD')
@@ -92,6 +93,7 @@ function Page() {
         onDisconnect={handleDisconnect}
         address={effectiveAddress}
         isConnected={isConnected}
+        walletChainId={walletChainId}
       />
 
       {isConnected && effectiveAddress && (
@@ -112,8 +114,8 @@ interface AssetTreeBoxProps {
 }
 
 function AssetTreeBox({ fromToken, toToken, amount }: AssetTreeBoxProps) {
-  const getParent = (addr: string) => tokenMeta[addr]?.parent ?? null
-  const getSymbol = (addr: string) => tokenMeta[addr]?.symbol ?? ''
+  const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null
+  const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? ''
 
   const symbolToAddress = useMemo(() => {
     const entries = Object.values(tokenMeta).map((t) => [t.symbol, t.address])
@@ -121,10 +123,10 @@ function AssetTreeBox({ fromToken, toToken, amount }: AssetTreeBoxProps) {
   }, [])
 
   const route = useMemo(() => {
-    const fromAddr = symbolToAddress[fromToken]
-    const toAddr = symbolToAddress[toToken]
+    const fromAddr = symbolToAddress[fromToken] as Address | undefined
+    const toAddr = symbolToAddress[toToken] as Address | undefined
     if (!fromAddr || !toAddr) {
-      return { inputPath: [], outputPath: [], highlightNodes: new Set<string>(), hops: 0, rate: 1 }
+      return { inputPath: [] as Address[], outputPath: [] as Address[], highlightNodes: new Set<Address>(), hops: 0, rate: 1 }
     }
     return calculateSwapRoute(fromAddr, toAddr, ROOT_TOKEN, getParent)
   }, [fromToken, toToken, symbolToAddress])
@@ -135,7 +137,7 @@ function AssetTreeBox({ fromToken, toToken, amount }: AssetTreeBoxProps) {
     const { inputPath, outputPath, highlightNodes } = route
 
     // Build hop index for amount calculation
-    const hopIndex = new Map<string, number>()
+    const hopIndex = new Map<Address, number>()
     let hopCount = 0
     inputPath.forEach((addr) => { hopIndex.set(addr, hopCount); hopCount++ })
     outputPath.forEach((addr, idx) => { if (idx > 0) hopCount++; hopIndex.set(addr, hopCount) })
@@ -147,7 +149,7 @@ function AssetTreeBox({ fromToken, toToken, amount }: AssetTreeBoxProps) {
     // Check if path goes through pathUSD (input and output on different branches)
     const pathThroughRoot = outputPath.includes(ROOT_TOKEN)
 
-    const addLine = (addr: string, useUpwardL: boolean) => {
+    const addLine = (addr: Address, useUpwardL: boolean) => {
       const isOnPath = highlightNodes.has(addr)
       const depth = getTokenDepth(addr, getParent)
       const symbol = getSymbol(addr)
@@ -219,6 +221,7 @@ interface SwapBoxProps {
   onDisconnect: () => void
   address: Address | undefined
   isConnected: boolean
+  walletChainId: number | undefined
 }
 
 function SwapBox({
@@ -226,20 +229,39 @@ function SwapBox({
   setFromToken, setToToken, setAmount,
   showWalletOptions, setShowWalletOptions,
   onSwapSuccess, onDisconnect,
-  address, isConnected,
+  address, isConnected, walletChainId,
 }: SwapBoxProps) {
-  const chainId = useChainId()
   const { switchChain, isPending: isSwitching } = useSwitchChain()
-  const { writeContract, isPending: isSwapPending } = useWriteContract()
+  const sendCalls = useSendCallsSync()
+  const isSwapPending = sendCalls.isPending
 
-  const isWrongChain = isConnected && chainId !== REQUIRED_CHAIN_ID
+  const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID
 
-  const getParent = (addr: string) => tokenMeta[addr]?.parent ?? null
+  const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null
 
   const symbolToAddress = useMemo(() => {
     const entries = Object.values(tokenMeta).map((t) => [t.symbol, t.address])
     return Object.fromEntries(entries) as Record<string, string>
   }, [])
+
+  // Parse amount for quote
+  const amountIn = useMemo(() => {
+    const parsed = Number(amount)
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0n
+    return parseUnits(amount, TOKEN_DECIMALS)
+  }, [amount])
+
+  const fromAddr = symbolToAddress[fromToken] as Address | undefined
+  const toAddr = symbolToAddress[toToken] as Address | undefined
+
+  // Get real quote from Tempo DEX (only query when addresses are valid)
+  const canQuote = !!fromAddr && !!toAddr && amountIn > 0n && fromAddr !== toAddr
+  const { data: quoteData, error: quoteError, isLoading: quoteLoading } = Hooks.dex.useSellQuote({
+    tokenIn: fromAddr!,
+    tokenOut: toAddr!,
+    amountIn,
+    query: { enabled: canQuote },
+  })
 
   const balanceContracts = useMemo(() => {
     if (!address) return []
@@ -282,38 +304,48 @@ function SwapBox({
   }, [])
 
   const isNoOp = fromToken === toToken
-    const fromAddress = symbolToAddress[fromToken]
-  const fromBalance = fromAddress ? balances[fromAddress] ?? 0n : 0n
+  const fromBalance = fromAddr ? balances[fromAddr] ?? 0n : 0n
   const fromBalanceFormatted = Number(formatUnits(fromBalance, TOKEN_DECIMALS))
   const parsedAmount = Number(amount) || 0
   const insufficientBalance = isConnected && parsedAmount > fromBalanceFormatted
 
-  const { route, amountOut } = useMemo(() => {
-    const fromAddr = symbolToAddress[fromToken]
-    const toAddr = symbolToAddress[toToken]
+  // Calculate route for tree display (still uses local path calculation)
+  const route = useMemo(() => {
     if (!fromAddr || !toAddr) {
-      return { route: { hops: 0, rate: 1 }, amountOut: 0 }
+      return { inputPath: [] as Address[], outputPath: [] as Address[], highlightNodes: new Set<Address>(), hops: 0, rate: 1 }
     }
-    const r = calculateSwapRoute(fromAddr, toAddr, ROOT_TOKEN, getParent)
-    const out = calculateOutputAmount(parsedAmount, r.rate)
-    return { route: r, amountOut: out }
-  }, [amount, fromToken, toToken, symbolToAddress, parsedAmount])
+    return calculateSwapRoute(fromAddr, toAddr, ROOT_TOKEN, getParent)
+  }, [fromAddr, toAddr])
+
+  // Quote from Tempo DEX
+  const amountOut = quoteData ?? 0n
+  const amountOutFormatted = Number(formatUnits(amountOut, TOKEN_DECIMALS))
+  const effectiveRate = amountIn > 0n ? amountOutFormatted / parsedAmount : 1
+
+  // Slippage tolerance (0.5%)
+  const slippageTolerance = 0.005
+  const minAmountOut = amountOut > 0n
+    ? amountOut * BigInt(Math.floor((1 - slippageTolerance) * 1000)) / 1000n
+    : 0n
 
   const handleSwap = () => {
-    const fromAddr = symbolToAddress[fromToken] as Address
-    const toAddr = symbolToAddress[toToken] as Address
-    const amountIn = parseUnits(amount, TOKEN_DECIMALS)
-    const minAmountOut = parseUnits((amountOut * 0.99).toFixed(TOKEN_DECIMALS), TOKEN_DECIMALS)
+    if (!fromAddr || !toAddr || amountIn === 0n) return
 
-    writeContract(
-      {
-        address: ROUTER_ADDRESS,
-        abi: ROUTER_ABI,
-        functionName: 'swap',
-        args: [fromAddr, toAddr, amountIn, minAmountOut],
-      },
-      { onSuccess: onSwapSuccess }
-    )
+    const calls = [
+      Actions.token.approve.call({
+        amount: amountIn,
+        spender: Addresses.stablecoinExchange,
+        token: fromAddr,
+      }),
+      Actions.dex.sell.call({
+        amountIn,
+        minAmountOut,
+        tokenIn: fromAddr,
+        tokenOut: toAddr,
+      }),
+    ]
+
+    sendCalls.sendCallsSync({ calls }, { onSuccess: onSwapSuccess })
   }
 
   const formatBalance = (bal: bigint) => {
@@ -356,14 +388,21 @@ function SwapBox({
 
           <div className="quote">
           {insufficientBalance && <div className="error">insufficient balance</div>}
+          {quoteError && <div className="error">
+            {quoteError.message.includes('InsufficientLiquidity') ? 'insufficient liquidity' : 'quote error'}
+          </div>}
           {isNoOp ? (
             <div>no-op</div>
-          ) : (
+          ) : quoteLoading ? (
+            <div>loading quote...</div>
+          ) : amountOut > 0n ? (
             <>
-              <div>rate: {route.rate.toFixed(6)} (0.3%/hop)</div>
-              <div>output: {amountOut.toFixed(2)} {toToken}</div>
+              <div>rate: {effectiveRate.toFixed(6)}</div>
+              <div>output: {amountOutFormatted.toFixed(2)} {toToken}</div>
             </>
-          )}
+          ) : parsedAmount > 0 ? (
+            <div>enter amount</div>
+          ) : null}
             </div>
 
         {showWalletOptions ? (
@@ -385,7 +424,7 @@ function SwapBox({
           <div className="action-section">
             <button
               className="btn-primary"
-              disabled={isNoOp || insufficientBalance || isSwapPending}
+              disabled={isNoOp || insufficientBalance || isSwapPending || !amountOut || !!quoteError}
               onClick={handleSwap}
             >
               {isSwapPending ? 'SWAPPING...' : 'SWAP'}

@@ -3,7 +3,7 @@ import { defineChain } from 'viem'
 import { injected, porto } from 'wagmi/connectors'
 
 export const tempoTestnet = defineChain({
-  id: 1088_2024,
+  id: 42429,
   name: 'Tempo Testnet',
   nativeCurrency: {
     name: 'ETH',
