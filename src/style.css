@@ -269,17 +269,32 @@ input:focus {
 
 .quote {
   font-size: 12px;
-  color: #1a1a2e;
-  background: #e8eef4;
-  border: 1px solid #c5d0db;
-  padding: 10px 12px;
-  display: grid;
-  gap: 2px;
+  color: #6b7280;
+  padding: 8px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .quote .error {
   color: #dc2626;
-  font-weight: 600;
+}
+
+.quote .success {
+  color: #16a34a;
+}
+
+.quote-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.quote-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .btn-primary {

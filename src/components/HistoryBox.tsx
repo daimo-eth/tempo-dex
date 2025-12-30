@@ -5,12 +5,13 @@ import { formatUnits } from "viem";
 import { TOKEN_DECIMALS, tokenMeta } from "../config";
 import { fetchSwapHistory, type SwapSummary } from "../data";
 import { shortenAddress } from "../utils";
+import { tempoTestnet } from "../wagmi";
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
-const EXPLORER_BASE = "https://explorer.testnet.tempo.xyz/tx/";
+const EXPLORER_URL = tempoTestnet.blockExplorers.default.url;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -109,7 +110,7 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
                 </td>
                 <td>
                   <a
-                    href={`${EXPLORER_BASE}${swap.txHash}`}
+                    href={`${EXPLORER_URL}/tx/${swap.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >

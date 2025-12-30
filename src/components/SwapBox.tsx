@@ -1,10 +1,9 @@
 // SwapBox - swap form, wallet connection, and execution
 import React, { useMemo } from "react";
 import type { Address } from "viem";
-import { encodeFunctionData, formatUnits, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
-  useCapabilities,
   useConnect,
   useConnectors,
   useDisconnect,
@@ -65,7 +64,12 @@ export function SwapBox({
   setAmount,
   onSwapSuccess,
 }: SwapBoxProps) {
-  const { address, isConnected, chainId: walletChainId } = useAccount();
+  const {
+    address,
+    isConnected,
+    chainId: walletChainId,
+    connector,
+  } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const connectors = useConnectors();
@@ -85,18 +89,35 @@ export function SwapBox({
 
   const [showWalletOptions, setShowWalletOptions] = React.useState(false);
 
-  // Check if wallet supports batched calls (atomicBatch capability)
-  const { data: capabilities } = useCapabilities({
-    query: { enabled: isConnected },
-  });
+  // Check if wallet supports batched calls
+  // tempo.ts webAuthn connector supports batched calls via walletNamespaceCompat
+  // but doesn't implement wallet_getCapabilities, so we detect by connector type
   const supportsBatchedCalls = useMemo(() => {
-    if (!capabilities || !walletChainId) return false;
-    const chainCaps = capabilities[walletChainId];
-    return chainCaps?.atomicBatch?.supported === true;
-  }, [capabilities, walletChainId]);
+    if (!isConnected || !connector) return false;
+    // tempo.ts webAuthn connector has id/type 'webAuthn'
+    return connector.id === "webAuthn" || connector.type === "webAuthn";
+  }, [isConnected, connector]);
 
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
   const isNoOp = fromToken === toToken;
+
+  // Swap result (success or error) - user must click "continue" to proceed
+  type SwapResult =
+    | {
+        type: "success";
+        fromAmount: string;
+        fromSymbol: string;
+        toAmount: string;
+        toSymbol: string;
+      }
+    | { type: "error"; message: string }
+    | null;
+  const [swapResult, setSwapResult] = React.useState<SwapResult>(null);
+
+  // Clear swap result when inputs change
+  React.useEffect(() => {
+    setSwapResult(null);
+  }, [fromToken, toToken, amount]);
 
   // Parse amount
   const amountIn = useMemo(() => {
@@ -174,15 +195,16 @@ export function SwapBox({
     console.log("[approve] handleApprove called", {
       fromToken,
       spender: DEX_ADDRESS,
-      amount: amountIn.toString(),
+      amount: "infinite",
     });
 
+    // Infinite approval so user only has to approve once per token
     approveWrite.writeContract(
       {
         address: fromToken,
         abi: ERC20_ABI,
         functionName: "approve",
-        args: [DEX_ADDRESS, amountIn],
+        args: [DEX_ADDRESS, maxUint256],
       },
       {
         onError: (error) => {
@@ -203,9 +225,25 @@ export function SwapBox({
     },
   });
 
-  // Trigger onSwapSuccess when swap tx is confirmed
+  // Trigger onSwapSuccess when swap tx is confirmed (fallback flow)
+  const [lastSwapParams, setLastSwapParams] = React.useState<{
+    fromAmount: string;
+    fromSymbol: string;
+    toAmount: string;
+    toSymbol: string;
+  } | null>(null);
+
   React.useEffect(() => {
-    if (swapWrite.data && !isSwapConfirming && swapWrite.isSuccess) {
+    if (
+      swapWrite.data &&
+      !isSwapConfirming &&
+      swapWrite.isSuccess &&
+      lastSwapParams
+    ) {
+      setSwapResult({
+        type: "success",
+        ...lastSwapParams,
+      });
       onSwapSuccess();
       refetchAllowance();
     }
@@ -213,6 +251,7 @@ export function SwapBox({
     swapWrite.data,
     isSwapConfirming,
     swapWrite.isSuccess,
+    lastSwapParams,
     onSwapSuccess,
     refetchAllowance,
   ]);
@@ -244,6 +283,16 @@ export function SwapBox({
       return;
     }
 
+    // Capture params for success message
+    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
+    setLastSwapParams({
+      fromAmount: inputFormatted.toFixed(2),
+      fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
+      toAmount: amountOutFormatted.toFixed(2),
+      toSymbol: tokenMeta[toToken]?.symbol ?? "",
+    });
+    setSwapResult(null);
+
     swapWrite.writeContract(
       {
         address: DEX_ADDRESS,
@@ -254,6 +303,10 @@ export function SwapBox({
       {
         onError: (error) => {
           console.error("[swap] error", error);
+          setSwapResult({
+            type: "error",
+            message: error.message || "swap failed",
+          });
         },
       }
     );
@@ -271,12 +324,46 @@ export function SwapBox({
       },
     });
 
+  // Track last batched swap params for success message
+  const [lastBatchedSwapParams, setLastBatchedSwapParams] = React.useState<{
+    fromAmount: string;
+    fromSymbol: string;
+    toAmount: string;
+    toSymbol: string;
+  } | null>(null);
+
+  // Log receipts and handle errors
   React.useEffect(() => {
-    if (batchedStatus?.status === "success") {
+    if (!batchedStatus) return;
+
+    console.log("[batchedSwap] status", batchedStatus);
+    if (batchedStatus.receipts) {
+      console.log("[batchedSwap] receipts", batchedStatus.receipts);
+    }
+
+    // Check status - "success"/"failure" string, or statusCode 200/500
+    const statusCode = (batchedStatus as { statusCode?: number }).statusCode;
+    const isSuccess = batchedStatus.status === "success" || statusCode === 200;
+    const isFailure = batchedStatus.status === "failure" || statusCode === 500;
+
+    if (isSuccess && lastBatchedSwapParams) {
+      setSwapResult({
+        type: "success",
+        ...lastBatchedSwapParams,
+      });
       onSwapSuccess();
       refetchAllowance();
+    } else if (isFailure) {
+      // Check for reverted receipts
+      const failedReceipt = batchedStatus.receipts?.find(
+        (r: { status: string }) => r.status === "reverted"
+      );
+      setSwapResult({
+        type: "error",
+        message: failedReceipt ? "transaction reverted" : "swap failed",
+      });
     }
-  }, [batchedStatus?.status, onSwapSuccess, refetchAllowance]);
+  }, [batchedStatus, lastBatchedSwapParams, onSwapSuccess, refetchAllowance]);
 
   const isBatchedPending = batchedSwap.isPending || isBatchedConfirming;
 
@@ -317,14 +404,31 @@ export function SwapBox({
       }),
     });
 
+    // Capture params for success message
+    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
+    setLastBatchedSwapParams({
+      fromAmount: inputFormatted.toFixed(2),
+      fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
+      toAmount: amountOutFormatted.toFixed(2),
+      toSymbol: tokenMeta[toToken]?.symbol ?? "",
+    });
+    setSwapResult(null);
+
     batchedSwap.sendCalls(
       {
         calls,
         chainId: REQUIRED_CHAIN_ID,
       },
       {
+        onSuccess: (result) => {
+          console.log("[batchedSwap] sendCalls result", result);
+        },
         onError: (error) => {
           console.error("[batchedSwap] error", error);
+          setSwapResult({
+            type: "error",
+            message: error.message || "swap failed",
+          });
         },
       }
     );
@@ -408,56 +512,34 @@ export function SwapBox({
     amountOut > 0n &&
     hasValidQuote;
 
+  // Determine why execution is blocked (null if can proceed)
+  const execBlockedBecause = (() => {
+    if (isNoOp) return "no-op";
+    if (insufficientBalance) return "insufficient balance";
+    if (quote.error) return "insufficient liquidity";
+    if (quote.loading && !quote.data) return "loading...";
+    if (parsedAmount <= 0) return "enter amount";
+    return null;
+  })();
+
   // Render action button(s)
   const renderActionButtons = () => {
     if (showWalletOptions) {
       return (
         <div className="wallet-options">
           <div className="wallet-options-title">select wallet</div>
-          {filteredConnectors.flatMap((connector) => {
-            const isWebAuthn = connector.name === "EOA (WebAuthn)";
-            if (isWebAuthn) {
-              // Show sign-in and sign-up as split button for Native passkey
-              return (
-                <div key={connector.uid} className="btn-split">
-                  <button
-                    className="btn-split-left"
-                    onClick={() => {
-                      // capabilities is a tempo.ts connector param for sign-up/sign-in
-                      connect({
-                        connector,
-                        capabilities: { type: "sign-up" },
-                      } as any);
-                      setShowWalletOptions(false);
-                    }}
-                  >
-                    Sign up
-                  </button>
-                  <button
-                    className="btn-split-right"
-                    onClick={() => {
-                      connect({ connector });
-                      setShowWalletOptions(false);
-                    }}
-                  >
-                    Log in
-                  </button>
-                </div>
-              );
-            }
-            return (
-              <button
-                key={connector.uid}
-                className="btn-connector"
-                onClick={() => {
-                  connect({ connector });
-                  setShowWalletOptions(false);
-                }}
-              >
-                {connector.name}
-              </button>
-            );
-          })}
+          {filteredConnectors.map((connector) => (
+            <button
+              key={connector.uid}
+              className="btn-connector"
+              onClick={() => {
+                connect({ connector });
+                setShowWalletOptions(false);
+              }}
+            >
+              {connector.name}
+            </button>
+          ))}
           <button
             className="btn-link"
             onClick={() => setShowWalletOptions(false)}
@@ -513,7 +595,7 @@ export function SwapBox({
         <div className="action-section">
           <button
             className="btn-primary"
-            disabled={!canBatchedSwap}
+            disabled={!canBatchedSwap || !!swapResult}
             onClick={handleBatchedSwap}
           >
             {isBatchedPending ? "SWAPPING..." : "SWAP"}
@@ -541,7 +623,7 @@ export function SwapBox({
         {needsApproval ? (
           <button
             className="btn-primary"
-            disabled={!canApprove}
+            disabled={!canApprove || !!swapResult}
             onClick={handleApprove}
           >
             {isApprovePending ? "APPROVING..." : "APPROVE"}
@@ -549,7 +631,7 @@ export function SwapBox({
         ) : (
           <button
             className="btn-primary"
-            disabled={!canSwap}
+            disabled={!canSwap || !!swapResult}
             onClick={handleSwap}
           >
             {isSwapPending ? "SWAPPING..." : "SWAP"}
@@ -621,29 +703,31 @@ export function SwapBox({
         </div>
 
         <div className="quote">
-          {isNoOp ? (
-            <div>no-op</div>
-          ) : quote.loading && !quote.data && !quote.error ? (
-            <div>loading quote...</div>
-          ) : quote.error ? (
-            <>
-              <div>rate: -</div>
-              <div className="error">insufficient liquidity</div>
-            </>
+          {swapResult?.type === "error" ? (
+            <div className="quote-row">
+              <span className="error">{swapResult.message}</span>
+              <button className="btn-link" onClick={() => setSwapResult(null)}>
+                continue
+              </button>
+            </div>
+          ) : swapResult?.type === "success" ? (
+            <div className="quote-row">
+              <span className="success">
+                swapped {swapResult.fromAmount} {swapResult.fromSymbol} →{" "}
+                {swapResult.toAmount} {swapResult.toSymbol}
+              </span>
+              <button className="btn-link" onClick={() => setSwapResult(null)}>
+                continue
+              </button>
+            </div>
+          ) : execBlockedBecause ? (
+            <div>{execBlockedBecause}</div>
           ) : amountOut > 0n ? (
-            <>
-              <div>rate: {rate.toFixed(6)}</div>
-              <div>
-                output: {amountOutFormatted.toFixed(2)}{" "}
-                {tokenMeta[toToken]?.symbol}
-              </div>
-            </>
-          ) : parsedAmount > 0 ? (
-            <div>enter amount</div>
+            <div className="success">
+              outputs {amountOutFormatted.toFixed(2)}{" "}
+              {tokenMeta[toToken]?.symbol}
+            </div>
           ) : null}
-          {insufficientBalance && (
-            <div className="error">insufficient balance</div>
-          )}
         </div>
 
         {renderActionButtons()}
@@ -651,4 +735,3 @@ export function SwapBox({
     </section>
   );
 }
-

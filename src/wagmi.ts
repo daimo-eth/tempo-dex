@@ -1,9 +1,8 @@
 import { defineChain } from "viem";
 import { createConfig, http } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { KeyManager, webAuthn } from "tempo.ts/wagmi";
-// Porto disabled: RpcResponse.InternalError: This Wallet does not support the requested chain ID
-// import { porto } from "wagmi/connectors";
+// TODO: re-enable webAuthn once domain is configured
+// import { KeyManager, webAuthn } from "tempo.ts/wagmi";
 
 export const tempoTestnet = defineChain({
   id: 42429,
@@ -19,7 +18,7 @@ export const tempoTestnet = defineChain({
   blockExplorers: {
     default: {
       name: "Tempo Explorer",
-      url: "https://explore.tempo.xyz",
+      url: "https://explorer.tempo.xyz",
     },
   },
   testnet: true,
@@ -28,7 +27,7 @@ export const tempoTestnet = defineChain({
 export const config = createConfig({
   chains: [tempoTestnet],
   connectors: [
-    webAuthn({ keyManager: KeyManager.localStorage() }),
+    // webAuthn({ keyManager: KeyManager.localStorage() }),
     injected(),
   ],
   transports: {

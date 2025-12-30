@@ -2,3 +2,8 @@ dist/
 node_modules/
 .playwright-mcp/
 .env
+
+# dev build artifacts in public/
+public/bundle.js
+public/bundle.js.map
+public/bundle.css
