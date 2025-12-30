@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.tsx --bundle --outfile=public/bundle.js --sourcemap --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\"",
-    "build": "esbuild src/app.tsx --bundle --outfile=dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" && cp public/index.html dist/",
-    "start": "serve dist -l ${PORT:-8080}",
+    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\"",
+    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\"",
+    "start": "serve public -l ${PORT:-8080}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },

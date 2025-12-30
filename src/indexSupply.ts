@@ -14,6 +14,7 @@ const TEMPO_CHAIN_ID = 42429;
 // API key injected at build time via esbuild --define
 // Set INDEX_SUPPLY_API_KEY env var before building to enable authentication
 declare const __INDEX_SUPPLY_API_KEY__: string;
+console.log("Using Index Supply API key:", __INDEX_SUPPLY_API_KEY__);
 
 /**
  * ERC-20 Transfer event signature for Index Supply queries.
