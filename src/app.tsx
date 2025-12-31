@@ -1,14 +1,15 @@
 // Tempo DEX - Main application
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { parseUnits, type Address } from "viem";
-import { WagmiProvider, useAccount } from "wagmi";
+import { useAccount, WagmiProvider } from "wagmi";
 import {
   AssetsBox,
   AssetTreeBox,
   HistoryBox,
   SwapBox,
+  TabBar,
 } from "./components";
 import { TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
@@ -26,9 +27,9 @@ const DEBUG_WALLET_ADDR: Address | null = null;
 
 const queryClient = new QueryClient();
 
-// Default tokens
-const DEFAULT_FROM = "0x20c0000000000000000000000000000000000001" as Address; // AlphaUSD
-const DEFAULT_TO = "0x20c0000000000000000000000000000000000002" as Address; // BetaUSD
+// Default tokens (must match TOKENS array exactly)
+const DEFAULT_FROM: Address = "0x20c0000000000000000000000000000000000001"; // AlphaUSD
+const DEFAULT_TO: Address = "0x20c0000000000000000000000000000000000002"; // BetaUSD
 
 type Tab = "dex" | "assets";
 
@@ -51,7 +52,8 @@ function App() {
 // -----------------------------------------------------------------------------
 
 function Page() {
-  const { address: connectedAddress, isConnected: walletConnected } = useAccount();
+  const { address: connectedAddress, isConnected: walletConnected } =
+    useAccount();
 
   // Debug override for testing
   const address = DEBUG_WALLET_ADDR ?? connectedAddress;
@@ -156,26 +158,17 @@ function Page() {
   }, [blockNumber, fromToken, toToken, amount, triggerQuote]);
 
   // Input handlers that trigger quote
-  const handleFromToken = useCallback(
-    (addr: Address) => {
-      setFromToken(addr);
-    },
-    []
-  );
+  const handleFromToken = useCallback((addr: Address) => {
+    setFromToken(addr);
+  }, []);
 
-  const handleToToken = useCallback(
-    (addr: Address) => {
-      setToToken(addr);
-    },
-    []
-  );
+  const handleToToken = useCallback((addr: Address) => {
+    setToToken(addr);
+  }, []);
 
-  const handleAmount = useCallback(
-    (amountStr: string) => {
-      setAmount(amountStr);
-    },
-    []
-  );
+  const handleAmount = useCallback((amountStr: string) => {
+    setAmount(amountStr);
+  }, []);
 
   const handleSwapSuccess = useCallback(() => {
     // Refresh gets new block and triggers all data refetch
@@ -185,7 +178,8 @@ function Page() {
   return (
     <main className="page">
       <header className="header">
-        <h1>TEMPO DEX</h1>
+        <h1>TEMPO</h1>
+        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
         <div className="header-right">
           {blockNumber !== null && (
             <span className="block-number">#{blockNumber.toString()}</span>

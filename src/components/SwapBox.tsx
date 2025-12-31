@@ -1,7 +1,14 @@
 // SwapBox - swap form, wallet connection, and execution
-import React, { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
-import { encodeFunctionData, formatUnits, maxUint256, parseUnits } from "viem";
+import {
+  encodeFunctionData,
+  erc20Abi,
+  formatUnits,
+  maxUint256,
+  parseUnits,
+} from "viem";
+import { tempoTestnet } from "viem/chains";
 import {
   useAccount,
   useConnect,
@@ -18,14 +25,12 @@ import {
 import {
   DEX_ABI,
   DEX_ADDRESS,
-  ERC20_ABI,
   TOKENS,
   TOKEN_DECIMALS,
   tokenMeta,
 } from "../config";
 import type { QuoteState } from "../types";
 import { shortenAddress } from "../utils";
-import { tempoTestnet } from "../wagmi";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -49,6 +54,17 @@ interface SwapBoxProps {
   setAmount: (v: string) => void;
   onSwapSuccess: () => void;
 }
+
+type SwapResult =
+  | {
+      type: "success";
+      fromAmount: string;
+      fromSymbol: string;
+      toAmount: string;
+      toSymbol: string;
+    }
+  | { type: "error"; message: string }
+  | null;
 
 // -----------------------------------------------------------------------------
 // Component
@@ -87,7 +103,7 @@ export function SwapBox({
     },
   });
 
-  const [showWalletOptions, setShowWalletOptions] = React.useState(false);
+  const [showWalletOptions, setShowWalletOptions] = useState(false);
 
   // Check if wallet supports batched calls
   // tempo.ts webAuthn connector supports batched calls via walletNamespaceCompat
@@ -101,21 +117,10 @@ export function SwapBox({
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
   const isNoOp = fromToken === toToken;
 
-  // Swap result (success or error) - user must click "continue" to proceed
-  type SwapResult =
-    | {
-        type: "success";
-        fromAmount: string;
-        fromSymbol: string;
-        toAmount: string;
-        toSymbol: string;
-      }
-    | { type: "error"; message: string }
-    | null;
-  const [swapResult, setSwapResult] = React.useState<SwapResult>(null);
+  const [swapResult, setSwapResult] = useState<SwapResult>(null);
 
   // Clear swap result when inputs change
-  React.useEffect(() => {
+  useEffect(() => {
     setSwapResult(null);
   }, [fromToken, toToken, amount]);
 
@@ -130,8 +135,8 @@ export function SwapBox({
   const balanceContracts = useMemo(() => {
     if (!address) return [];
     return TOKENS.map((tokenAddr) => ({
-      address: tokenAddr as Address,
-      abi: ERC20_ABI,
+      address: tokenAddr,
+      abi: erc20Abi,
       functionName: "balanceOf" as const,
       args: [address] as const,
     }));
@@ -157,7 +162,7 @@ export function SwapBox({
   // Fetch allowance for fromToken (spender is DEX)
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: fromToken,
-    abi: ERC20_ABI,
+    abi: erc20Abi,
     functionName: "allowance",
     args: address ? [address, DEX_ADDRESS] : undefined,
     query: { enabled: isConnected && !!address },
@@ -178,7 +183,7 @@ export function SwapBox({
   });
 
   // Refetch allowance when approve tx is confirmed
-  React.useEffect(() => {
+  useEffect(() => {
     if (approveWrite.data && !isApproveConfirming && approveWrite.isSuccess) {
       refetchAllowance();
     }
@@ -202,7 +207,7 @@ export function SwapBox({
     approveWrite.writeContract(
       {
         address: fromToken,
-        abi: ERC20_ABI,
+        abi: erc20Abi,
         functionName: "approve",
         args: [DEX_ADDRESS, maxUint256],
       },
@@ -226,14 +231,14 @@ export function SwapBox({
   });
 
   // Trigger onSwapSuccess when swap tx is confirmed (fallback flow)
-  const [lastSwapParams, setLastSwapParams] = React.useState<{
+  const [lastSwapParams, setLastSwapParams] = useState<{
     fromAmount: string;
     fromSymbol: string;
     toAmount: string;
     toSymbol: string;
   } | null>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (
       swapWrite.data &&
       !isSwapConfirming &&
@@ -325,7 +330,7 @@ export function SwapBox({
     });
 
   // Track last batched swap params for success message
-  const [lastBatchedSwapParams, setLastBatchedSwapParams] = React.useState<{
+  const [lastBatchedSwapParams, setLastBatchedSwapParams] = useState<{
     fromAmount: string;
     fromSymbol: string;
     toAmount: string;
@@ -333,7 +338,7 @@ export function SwapBox({
   } | null>(null);
 
   // Log receipts and handle errors
-  React.useEffect(() => {
+  useEffect(() => {
     if (!batchedStatus) return;
 
     console.log("[batchedSwap] status", batchedStatus);
@@ -388,7 +393,7 @@ export function SwapBox({
       calls.push({
         to: fromToken,
         data: encodeFunctionData({
-          abi: ERC20_ABI,
+          abi: erc20Abi,
           functionName: "approve",
           args: [DEX_ADDRESS, amountIn],
         }),
@@ -525,21 +530,54 @@ export function SwapBox({
   // Render action button(s)
   const renderActionButtons = () => {
     if (showWalletOptions) {
+      const webAuthnConnector = filteredConnectors.find(
+        (c) => c.id === "webAuthn" || c.type === "webAuthn"
+      );
+      const otherConnectors = filteredConnectors.filter(
+        (c) => c.id !== "webAuthn" && c.type !== "webAuthn"
+      );
+
       return (
         <div className="wallet-options">
-          <div className="wallet-options-title">select wallet</div>
-          {filteredConnectors.map((connector) => (
-            <button
-              key={connector.uid}
-              className="btn-connector"
-              onClick={() => {
-                connect({ connector });
-                setShowWalletOptions(false);
-              }}
-            >
-              {connector.name}
-            </button>
-          ))}
+          {webAuthnConnector && (
+            <div className="wallet-native">
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  connect({ connector: webAuthnConnector });
+                  setShowWalletOptions(false);
+                }}
+              >
+                SIGN UP
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  connect({ connector: webAuthnConnector });
+                  setShowWalletOptions(false);
+                }}
+              >
+                LOG IN
+              </button>
+            </div>
+          )}
+          {otherConnectors.length > 0 && (
+            <>
+              <div className="wallet-options-title">or connect wallet</div>
+              {otherConnectors.map((connector) => (
+                <button
+                  key={connector.uid}
+                  className="btn-connector"
+                  onClick={() => {
+                    connect({ connector });
+                    setShowWalletOptions(false);
+                  }}
+                >
+                  {connector.name}
+                </button>
+              ))}
+            </>
+          )}
           <button
             className="btn-link"
             onClick={() => setShowWalletOptions(false)}
@@ -664,7 +702,10 @@ export function SwapBox({
             <select
               id="fromToken"
               value={fromToken}
-              onChange={(e) => setFromToken(e.target.value as Address)}
+              onChange={(e) => {
+                const token = tokenMeta[e.target.value as Address];
+                if (token) setFromToken(token.address);
+              }}
             >
               {(isConnected ? tokensByBalance : tokensBySymbol).map((t) => (
                 <option key={t.address} value={t.address}>
@@ -681,7 +722,10 @@ export function SwapBox({
             <select
               id="toToken"
               value={toToken}
-              onChange={(e) => setToToken(e.target.value as Address)}
+              onChange={(e) => {
+                const token = tokenMeta[e.target.value as Address];
+                if (token) setToToken(token.address);
+              }}
             >
               {tokensBySymbol.map((t) => (
                 <option key={t.address} value={t.address}>

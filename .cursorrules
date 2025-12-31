@@ -1,0 +1,35 @@
+# Tempo DEX Coding Guidelines
+
+## Type Safety
+
+- Remove all `as Address` casts. Use `getAddress()` from viem for runtime validation.
+- Avoid `as` typecasting. No `any`, minimal `unknown`.
+- Use proper type imports: `import { type Address } from "viem"`.
+
+## File Structure
+
+In every file, order code as:
+1. Types and constants (at top)
+2. Public (exported) functions
+3. Helpers (non-exported functions at bottom)
+
+## Dependencies
+
+- Use `erc20Abi` from viem, not custom ERC20 ABIs.
+- Check if ABIs/addresses are exported from dependencies (e.g., tempo.ts) before hardcoding.
+
+## Style
+
+- Be concise. Error messages always lowercase.
+- Prefer direct React hook imports over `React.useState`, `React.useEffect`, etc.
+- State objects should be self-contained (include relevant context like asset/block).
+- Avoid refs for tracking previous values when state can include the needed context.
+- No re-exports. Import directly from the source module.
+
+## Build
+
+- Dev server: `npm run dev` (serves from public/, bundles to public/dist/)
+- Production: `npm run build` then `npm start` (serves from public/)
+- Typecheck: `npm run typecheck`
+- Test: `npm test`
+

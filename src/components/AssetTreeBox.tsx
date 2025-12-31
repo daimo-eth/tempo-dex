@@ -81,13 +81,13 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
         const amt = amountByNode.get(addr);
         if (amt !== undefined) {
           const formatted = Number(formatUnits(amt, TOKEN_DECIMALS));
-          let label: React.ReactNode = null;
-          if (addr === inputNode) label = <Label> INPUT</Label>;
-          if (addr === outputNode && inputNode !== outputNode)
-            label = <Label> OUTPUT</Label>;
+          let label = "";
+          if (addr === inputNode) label = " INPUT";
+          if (addr === outputNode && inputNode !== outputNode) label = " OUTPUT";
           rightContent = (
             <>
-              ${formatted.toFixed(2)}{label}
+              {formatted.toFixed(2)}
+              {label && <Label>{label}</Label>}
             </>
           );
         } else if (quote.loading) {
@@ -96,9 +96,10 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
       }
 
       const leftCol = padOrTruncate(prefix + symbol, TREE_W_CHARS);
+      const lineKey = `${addr}-${useUpwardL ? "up" : "down"}`;
       lines.push(
         <div
-          key={addr}
+          key={lineKey}
           className={`tree-line ${isOnPath ? "on-path" : "off-path"}`}
         >
           <span className="left">{leftCol}</span>

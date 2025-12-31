@@ -3,9 +3,9 @@ import React, { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
 import { TOKEN_DECIMALS, tokenMeta } from "../config";
-import { fetchSwapHistory, type SwapSummary } from "../data";
+import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
 import { shortenAddress } from "../utils";
-import { tempoTestnet } from "../wagmi";
+import { tempoTestnet } from "viem/chains";
 
 // -----------------------------------------------------------------------------
 // Constants

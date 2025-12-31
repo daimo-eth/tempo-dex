@@ -71,7 +71,9 @@ a {
 
 .tabs {
   display: flex;
+  justify-content: center;
   gap: 16px;
+  flex: 1;
 }
 
 .tab {
@@ -356,6 +358,34 @@ input:focus {
   font-size: 11px;
   color: #6b7280;
   margin-bottom: 4px;
+}
+
+.wallet-native {
+  display: flex;
+  gap: 8px;
+}
+
+.wallet-native .btn-primary,
+.wallet-native .btn-secondary {
+  flex: 1;
+}
+
+.btn-secondary {
+  width: 100%;
+  padding: 12px;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #1a1a2e;
+  background: #fff;
+  border: 1px solid #1a1a2e;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-secondary:hover {
+  background: #e8eef4;
 }
 
 .btn-connector {

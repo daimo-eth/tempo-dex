@@ -61,10 +61,7 @@ export function calculateSwapRoute(
   // input path: from input up to (not including) LCA
   // output path: from LCA down to output
   const inputPath = pathA.slice(0, idxA);
-  const outputPath: Address[] = [
-    lca,
-    ...(pathB.slice(0, idxB).reverse() as Address[]),
-  ];
+  const outputPath: Address[] = [lca, ...pathB.slice(0, idxB).reverse()];
 
   const hops = idxA + idxB;
   const rate = Math.pow(FEE_PER_HOP, Math.max(hops, 0));

@@ -1,5 +1,5 @@
 // AssetsBox - displays token tree with selected pair liquidity
-import React, { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta, TOKENS } from "../config";
 import {
@@ -18,6 +18,8 @@ interface AssetsBoxProps {
 }
 
 interface LiquidityState {
+  asset: Address;
+  block: bigint;
   loading: boolean;
   error: string | null;
   data: PairLiquidity | null;
@@ -30,44 +32,59 @@ interface LiquidityState {
 export function AssetsBox({ blockNumber }: AssetsBoxProps) {
   const nonRootTokens = getNonRootTokens();
   const [selectedToken, setSelectedToken] = useState<Address>(
-    nonRootTokens[0] ?? (TOKENS[1] as Address)
+    nonRootTokens[0] ?? TOKENS[1]
   );
-  const [liquidity, setLiquidity] = useState<LiquidityState>({
-    loading: false,
-    error: null,
-    data: null,
-  });
+  const [liquidity, setLiquidity] = useState<LiquidityState | null>(null);
 
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
 
   // Fetch liquidity when selected token or block number changes
-  const loadLiquidity = useCallback(
-    async (token: Address, block: bigint, isTokenChange: boolean) => {
-      // Only clear data when changing token, not on block refresh
-      if (isTokenChange) {
-        setLiquidity({ loading: true, error: null, data: null });
-      } else {
-        setLiquidity((prev) => ({ ...prev, loading: true }));
-      }
-      const result = await fetchPairLiquidity(token, block);
-      if ("error" in result) {
-        setLiquidity({ loading: false, error: result.error, data: null });
-      } else {
-        setLiquidity({ loading: false, error: null, data: result });
-      }
-    },
-    []
-  );
-
-  // Track previous token to detect token changes vs block refreshes
-  const prevTokenRef = React.useRef<Address>(selectedToken);
-
   useEffect(() => {
-    const isTokenChange = prevTokenRef.current !== selectedToken;
-    prevTokenRef.current = selectedToken;
-    loadLiquidity(selectedToken, blockNumber, isTokenChange);
-  }, [selectedToken, blockNumber, loadLiquidity]);
+    let cancelled = false;
+    const isTokenChange = liquidity?.asset !== selectedToken;
+
+    // Set loading state
+    if (isTokenChange) {
+      setLiquidity({
+        asset: selectedToken,
+        block: blockNumber,
+        loading: true,
+        error: null,
+        data: null,
+      });
+    } else {
+      setLiquidity((prev) =>
+        prev ? { ...prev, block: blockNumber, loading: true } : null
+      );
+    }
+
+    fetchPairLiquidity(selectedToken, blockNumber).then((result) => {
+      if (cancelled) return;
+      if ("error" in result) {
+        setLiquidity({
+          asset: selectedToken,
+          block: blockNumber,
+          loading: false,
+          error: result.error,
+          data: null,
+        });
+      } else {
+        setLiquidity({
+          asset: selectedToken,
+          block: blockNumber,
+          loading: false,
+          error: null,
+          data: result,
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedToken, blockNumber]);
 
   const handleSelectToken = (addr: Address) => {
     if (addr !== ROOT_TOKEN) {
@@ -135,7 +152,10 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     const pairName = `${childSymbol}-${parentSymbol}`;
 
     // Show loading only if no existing data
-    if (liquidity.loading && !liquidity.data && !liquidity.error) {
+    if (
+      !liquidity ||
+      (liquidity.loading && !liquidity.data && !liquidity.error)
+    ) {
       return (
         <div className="liquidity">
           <div className="liquidity-title"># {pairName}</div>
@@ -159,20 +179,31 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
 
     const { midPrice, tickRows } = liquidity.data;
 
-    // Format liquidity to USD
+    // Console log market info
+    if (tickRows.length > 0) {
+      const minTick = tickRows[tickRows.length - 1].tick;
+      const maxTick = tickRows[0].tick;
+      const minPrice = tickRows[tickRows.length - 1].price;
+      const maxPrice = tickRows[0].price;
+      console.log(
+        `${pairName}, min tick ${minTick} = ${minPrice.toFixed(5)}, max tick ${maxTick} = ${maxPrice.toFixed(5)}`
+      );
+    }
+
+    // Format liquidity
     const formatLiq = (liq: bigint, price: number, isBid: boolean) => {
       if (liq === 0n) return "";
       // Bids are in child token (need price conversion), asks are in parent token
-      const usd = isBid
+      const val = isBid
         ? (Number(liq) / 10 ** TOKEN_DECIMALS) * price
         : Number(liq) / 10 ** TOKEN_DECIMALS;
-      return `$${usd.toFixed(0)}`;
+      return val.toFixed(0);
     };
 
     return (
       <div className="liquidity">
         <div className="liquidity-title">
-          # {pairName} {midPrice.toFixed(5)}
+          # 1 {childSymbol} = {midPrice.toFixed(5)} {parentSymbol}
         </div>
         {tickRows.length > 0 && (
           <table className="tick-table">
@@ -206,4 +237,3 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     </section>
   );
 }
-

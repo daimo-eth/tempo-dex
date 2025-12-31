@@ -5,37 +5,6 @@ export const ROOT_TOKEN: Address = "0x20c0000000000000000000000000000000000000";
 // Token decimals (all Tempo stablecoins use 6)
 export const TOKEN_DECIMALS = 6;
 
-// Minimal ERC20 ABI for balance/allowance reading and approval
-export const ERC20_ABI = [
-  {
-    name: "balanceOf",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "allowance",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "owner", type: "address" },
-      { name: "spender", type: "address" },
-    ],
-    outputs: [{ name: "", type: "uint256" }],
-  },
-  {
-    name: "approve",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "spender", type: "address" },
-      { name: "amount", type: "uint256" },
-    ],
-    outputs: [{ name: "", type: "bool" }],
-  },
-] as const;
-
 // Tempo DEX address
 export const DEX_ADDRESS: Address =
   "0xdec0000000000000000000000000000000000000";

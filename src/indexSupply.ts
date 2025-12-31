@@ -1,7 +1,7 @@
 // Index Supply API client
 // Encapsulates all SQL queries to Index Supply for swap history
 
-import type { Address } from "viem";
+import { getAddress, type Address } from "viem";
 import { TOKEN_DECIMALS, tokenMeta } from "./config";
 
 // -----------------------------------------------------------------------------
@@ -13,8 +13,12 @@ const TEMPO_CHAIN_ID = 42429;
 
 // API key injected at build time via esbuild --define
 // Set INDEX_SUPPLY_API_KEY env var before building to enable authentication
-declare const __INDEX_SUPPLY_API_KEY__: string;
-console.log("Using Index Supply API key:", __INDEX_SUPPLY_API_KEY__);
+declare const __INDEX_SUPPLY_API_KEY__: string | undefined;
+const API_KEY =
+  typeof __INDEX_SUPPLY_API_KEY__ !== "undefined"
+    ? __INDEX_SUPPLY_API_KEY__
+    : "";
+if (API_KEY) console.log("Using Index Supply API key:", API_KEY);
 
 /**
  * ERC-20 Transfer event signature for Index Supply queries.
@@ -85,8 +89,8 @@ async function queryIndexSupply(
     "Content-Type": "application/json",
   };
 
-  if (__INDEX_SUPPLY_API_KEY__) {
-    headers["Authorization"] = `Bearer ${__INDEX_SUPPLY_API_KEY__}`;
+  if (API_KEY) {
+    headers["Authorization"] = `Bearer ${API_KEY}`;
   }
 
   const res = await fetch(url, { headers });
@@ -235,9 +239,9 @@ export async function fetchSwapHistory(
     const transfers: TransferRow[] = response.rows.map((row) => ({
       txHash: row[0],
       blockNum: BigInt(row[1]),
-      token: row[2] as Address,
-      from: row[3] as Address,
-      to: row[4] as Address,
+      token: getAddress(row[2]),
+      from: getAddress(row[3]),
+      to: getAddress(row[4]),
       value: BigInt(row[5]),
     }));
 

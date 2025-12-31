@@ -2,7 +2,8 @@
 // Run with: npx tsx src/history.script.ts
 
 import type { Address } from "viem";
-import { fetchBlockNumber, fetchSwapHistory, formatSwapSummary } from "./data";
+import { fetchBlockNumber } from "./data";
+import { fetchSwapHistory, formatSwapSummary } from "./indexSupply";
 
 const DEBUG_WALLET: Address = "0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D";
 
