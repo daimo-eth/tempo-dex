@@ -2,7 +2,8 @@
 // Encapsulates all SQL queries to Index Supply for swap history
 
 import { getAddress, type Address } from "viem";
-import { TOKEN_DECIMALS, tokenMeta } from "./config";
+import { TOKEN_DECIMALS } from "./config";
+import { getSymbol } from "./tokens";
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -264,12 +265,8 @@ export function formatSwapSummary(swap: SwapSummary): string {
   const formatAmount = (amount: bigint) =>
     (Number(amount) / 10 ** TOKEN_DECIMALS).toFixed(2);
 
-  const inSymbol = swap.tokenIn
-    ? (tokenMeta[swap.tokenIn]?.symbol ?? "?")
-    : "?";
-  const outSymbol = swap.tokenOut
-    ? (tokenMeta[swap.tokenOut]?.symbol ?? "?")
-    : "?";
+  const inSymbol = swap.tokenIn ? getSymbol(swap.tokenIn) : "?";
+  const outSymbol = swap.tokenOut ? getSymbol(swap.tokenOut) : "?";
   const inAmt = formatAmount(swap.amountIn);
   const outAmt = formatAmount(swap.amountOut);
 

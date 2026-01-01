@@ -22,13 +22,8 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import {
-  DEX_ABI,
-  DEX_ADDRESS,
-  TOKENS,
-  TOKEN_DECIMALS,
-  tokenMeta,
-} from "../config";
+import { DEX_ABI, DEX_ADDRESS, TOKEN_DECIMALS } from "../config";
+import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
 import { shortenAddress } from "../utils";
 
@@ -80,6 +75,9 @@ export function SwapBox({
   setAmount,
   onSwapSuccess,
 }: SwapBoxProps) {
+  // Get tokens from TokenManager
+  const { tokens, tokenMeta } = getTokenState();
+
   const {
     address,
     isConnected,
@@ -134,13 +132,13 @@ export function SwapBox({
   // Fetch balances
   const balanceContracts = useMemo(() => {
     if (!address) return [];
-    return TOKENS.map((tokenAddr) => ({
+    return tokens.map((tokenAddr) => ({
       address: tokenAddr,
       abi: erc20Abi,
       functionName: "balanceOf" as const,
       args: [address] as const,
     }));
-  }, [address]);
+  }, [address, tokens]);
 
   const { data: balanceResults } = useReadContracts({
     contracts: balanceContracts,
@@ -150,14 +148,14 @@ export function SwapBox({
   const balances = useMemo(() => {
     const map: Record<Address, bigint> = {};
     if (balanceResults) {
-      TOKENS.forEach((addr, idx) => {
+      tokens.forEach((addr, idx) => {
         const result = balanceResults[idx];
         map[addr] =
           result?.status === "success" ? (result.result as bigint) : 0n;
       });
     }
     return map;
-  }, [balanceResults]);
+  }, [balanceResults, tokens]);
 
   // Fetch allowance for fromToken (spender is DEX)
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -448,13 +446,13 @@ export function SwapBox({
       if (balB < balA) return -1;
       return a.symbol.localeCompare(b.symbol);
     });
-  }, [balances]);
+  }, [balances, tokenMeta]);
 
   const tokensBySymbol = useMemo(() => {
     return Object.values(tokenMeta).sort((a, b) =>
       a.symbol.localeCompare(b.symbol)
     );
-  }, []);
+  }, [tokenMeta]);
 
   // Balance check
   const fromBalance = balances[fromToken] ?? 0n;
@@ -544,7 +542,11 @@ export function SwapBox({
               <button
                 className="btn-primary"
                 onClick={() => {
-                  connect({ connector: webAuthnConnector });
+                  // Sign up creates a new passkey
+                  connect({
+                    connector: webAuthnConnector,
+                    capabilities: { type: "sign-up" },
+                  } as Parameters<typeof connect>[0]);
                   setShowWalletOptions(false);
                 }}
               >
@@ -553,7 +555,11 @@ export function SwapBox({
               <button
                 className="btn-secondary"
                 onClick={() => {
-                  connect({ connector: webAuthnConnector });
+                  // Log in uses an existing passkey
+                  connect({
+                    connector: webAuthnConnector,
+                    capabilities: { type: "sign-in" },
+                  } as Parameters<typeof connect>[0]);
                   setShowWalletOptions(false);
                 }}
               >

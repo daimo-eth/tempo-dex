@@ -2,10 +2,11 @@
 import React, { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
-import { TOKEN_DECIMALS, tokenMeta } from "../config";
-import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
-import { shortenAddress } from "../utils";
 import { tempoTestnet } from "viem/chains";
+import { TOKEN_DECIMALS } from "../config";
+import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
+import { getSymbol } from "../tokens";
+import { shortenAddress } from "../utils";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -75,11 +76,6 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     return num.toFixed(2);
   };
 
-  const getSymbol = (token: Address | null) => {
-    if (!token) return "?";
-    return tokenMeta[token]?.symbol ?? shortenAddress(token);
-  };
-
   // Don't render anything if no swaps
   if (state.swaps.length === 0) {
     return null;
@@ -103,10 +99,12 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
               <tr key={swap.txHash}>
                 <td>{swap.blockNumber.toString()}</td>
                 <td>
-                  {formatAmount(swap.amountIn)} {getSymbol(swap.tokenIn)}
+                  {formatAmount(swap.amountIn)}{" "}
+                  {swap.tokenIn ? getSymbol(swap.tokenIn) : "?"}
                 </td>
                 <td>
-                  {formatAmount(swap.amountOut)} {getSymbol(swap.tokenOut)}
+                  {formatAmount(swap.amountOut)}{" "}
+                  {swap.tokenOut ? getSymbol(swap.tokenOut) : "?"}
                 </td>
                 <td>
                   <a

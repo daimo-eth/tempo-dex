@@ -1,17 +1,14 @@
 // Centralized data fetching for Tempo DEX
 // All queries use a consistent block number for data coherence
 import type { Address } from "viem";
-import { createPublicClient, formatUnits, http } from "viem";
+import { createPublicClient, formatUnits, getAddress, http } from "viem";
 import { tempoTestnet } from "viem/chains";
-import {
-  DEX_ABI,
-  DEX_ADDRESS,
-  ROOT_TOKEN,
-  TOKEN_DECIMALS,
-  tokenMeta,
-  TOKENS,
-} from "./config";
+import { DEX_ABI, DEX_ADDRESS, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
+import { getTokenState } from "./tokens";
 import type { Quote } from "./types";
+
+// Normalized root token address for consistent comparisons
+const rootToken = getAddress(ROOT_TOKEN);
 
 // -----------------------------------------------------------------------------
 // Client (single instance)
@@ -36,6 +33,7 @@ export async function fetchBlockNumber(): Promise<bigint> {
 // -----------------------------------------------------------------------------
 
 function getPathToRoot(addr: Address): Address[] {
+  const { tokenMeta } = getTokenState();
   const path: Address[] = [];
   let current: Address | null = addr;
   while (current) {
@@ -53,7 +51,7 @@ export function getSwapPath(fromToken: Address, toToken: Address): Address[] {
   const pathB = getPathToRoot(toToken);
   const pathASet = new Set(pathA);
 
-  const lca = pathB.find((node) => pathASet.has(node)) ?? ROOT_TOKEN;
+  const lca = pathB.find((node) => pathASet.has(node)) ?? rootToken;
   const idxA = pathA.indexOf(lca);
   const idxB = pathB.indexOf(lca);
 
@@ -244,6 +242,7 @@ export async function fetchPairLiquidity(
   childToken: Address,
   blockNumber: bigint
 ): Promise<PairLiquidity | { error: string }> {
+  const { tokenMeta } = getTokenState();
   const parent = tokenMeta[childToken]?.parent;
   if (!parent) {
     return { error: "token has no parent" };
@@ -403,7 +402,6 @@ export function computePairLiquidity(
 
 /** Get all non-root tokens (tokens that have pairs) */
 export function getNonRootTokens(): Address[] {
-  return TOKENS.filter(
-    (addr) => addr !== ROOT_TOKEN && tokenMeta[addr]?.parent
-  );
+  const { tokens, tokenMeta } = getTokenState();
+  return tokens.filter((addr) => addr !== rootToken && tokenMeta[addr]?.parent);
 }

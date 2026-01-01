@@ -1,12 +1,14 @@
 // AssetsBox - displays token tree with selected pair liquidity
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
-import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta, TOKENS } from "../config";
+import { getAddress } from "viem";
+import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
 import {
   fetchPairLiquidity,
   getNonRootTokens,
   type PairLiquidity,
 } from "../data";
+import { getTokenState } from "../tokens";
 import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "../utils";
 
 // -----------------------------------------------------------------------------
@@ -30,9 +32,11 @@ interface LiquidityState {
 // -----------------------------------------------------------------------------
 
 export function AssetsBox({ blockNumber }: AssetsBoxProps) {
+  const { tokens, tokenMeta } = getTokenState();
   const nonRootTokens = getNonRootTokens();
+  const rootToken = getAddress(ROOT_TOKEN);
   const [selectedToken, setSelectedToken] = useState<Address>(
-    nonRootTokens[0] ?? TOKENS[1]
+    nonRootTokens[0] ?? tokens[1]
   );
   const [liquidity, setLiquidity] = useState<LiquidityState | null>(null);
 
@@ -87,7 +91,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
   }, [selectedToken, blockNumber]);
 
   const handleSelectToken = (addr: Address) => {
-    if (addr !== ROOT_TOKEN) {
+    if (addr !== rootToken) {
       setSelectedToken(addr);
     }
   };
@@ -101,7 +105,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
 
     // Build children map
     const childrenOf = new Map<Address | null, Address[]>();
-    for (const addr of TOKENS) {
+    for (const addr of tokens) {
       const parent = getParent(addr);
       const siblings = childrenOf.get(parent) ?? [];
       siblings.push(addr);
@@ -112,7 +116,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     const traverse = (addr: Address, depth: number) => {
       const isHighlighted = highlightedNodes.has(addr);
       const isSelected = addr === selectedToken;
-      const isRoot = addr === ROOT_TOKEN;
+      const isRoot = addr === rootToken;
       const symbol = getSymbol(addr);
 
       // Build prefix
@@ -141,14 +145,14 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
       }
     };
 
-    traverse(ROOT_TOKEN, 0);
+    traverse(rootToken, 0);
     return lines;
   };
 
   // Render liquidity info
   const renderLiquidity = () => {
     const childSymbol = getSymbol(selectedToken);
-    const parentSymbol = getSymbol(getParent(selectedToken) ?? ROOT_TOKEN);
+    const parentSymbol = getSymbol(getParent(selectedToken) ?? rootToken);
     const pairName = `${childSymbol}-${parentSymbol}`;
 
     // Show loading only if no existing data

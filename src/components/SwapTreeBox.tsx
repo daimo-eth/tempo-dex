@@ -1,11 +1,11 @@
-// AssetTreeBox - displays the token tree with swap path highlighted
+// SwapTreeBox - displays the token tree with swap path highlighted
 import React from "react";
 import type { Address } from "viem";
-import { formatUnits } from "viem";
-import { ROOT_TOKEN, TOKEN_DECIMALS, tokenMeta } from "../config";
+import { formatUnits, getAddress } from "viem";
+import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
 import { getSwapPath } from "../data";
 import { getTokenDepth } from "../swap";
-import { Label } from "./Text";
+import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
 import {
   BOX_CORNER,
@@ -13,12 +13,19 @@ import {
   TREE_W_CHARS,
   padOrTruncate,
 } from "../utils";
+import { Label } from "./Text";
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const AMOUNT_WIDTH = 10;
 
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
 
-interface AssetTreeBoxProps {
+interface SwapTreeBoxProps {
   fromToken: Address;
   toToken: Address;
   quote: QuoteState;
@@ -28,7 +35,10 @@ interface AssetTreeBoxProps {
 // Component
 // -----------------------------------------------------------------------------
 
-export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
+export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
+  const { tokenMeta } = getTokenState();
+  const rootToken = getAddress(ROOT_TOKEN);
+
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
 
@@ -50,12 +60,12 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
 
     // Determine if path goes through root
     const pathThroughRoot =
-      path.includes(ROOT_TOKEN) &&
-      path[0] !== ROOT_TOKEN &&
-      path[path.length - 1] !== ROOT_TOKEN;
+      path.includes(rootToken) &&
+      path[0] !== rootToken &&
+      path[path.length - 1] !== rootToken;
 
     // Find where root is in the path
-    const rootIdx = path.indexOf(ROOT_TOKEN);
+    const rootIdx = path.indexOf(rootToken);
     const inputPath = rootIdx >= 0 ? path.slice(0, rootIdx) : path;
     const outputPath = rootIdx >= 0 ? path.slice(rootIdx) : [];
 
@@ -81,17 +91,19 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
         const amt = amountByNode.get(addr);
         if (amt !== undefined) {
           const formatted = Number(formatUnits(amt, TOKEN_DECIMALS));
+          const amtStr = formatted.toFixed(2).padStart(AMOUNT_WIDTH);
           let label = "";
           if (addr === inputNode) label = " INPUT";
-          if (addr === outputNode && inputNode !== outputNode) label = " OUTPUT";
+          if (addr === outputNode && inputNode !== outputNode)
+            label = " OUTPUT";
           rightContent = (
             <>
-              {formatted.toFixed(2)}
+              {amtStr}
               {label && <Label>{label}</Label>}
             </>
           );
         } else if (quote.loading) {
-          rightContent = "...";
+          rightContent = "...".padStart(AMOUNT_WIDTH);
         }
       }
 
@@ -119,16 +131,16 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
       );
       sorted.forEach((addr) => addLine(addr, true));
       // Show pathUSD greyed at bottom if not in path
-      if (!highlightNodes.has(ROOT_TOKEN)) {
-        addLine(ROOT_TOKEN, false);
+      if (!highlightNodes.has(rootToken)) {
+        addLine(rootToken, false);
       }
     } else {
       // Single node (no-op) - show token above pathUSD
-      if (path[0] !== ROOT_TOKEN) {
+      if (path[0] !== rootToken) {
         addLine(path[0], true); // Use upward corner since it's above pathUSD
-        addLine(ROOT_TOKEN, false);
+        addLine(rootToken, false);
       } else {
-        addLine(ROOT_TOKEN, false);
+        addLine(rootToken, false);
       }
     }
 
@@ -137,9 +149,8 @@ export function AssetTreeBox({ fromToken, toToken, quote }: AssetTreeBoxProps) {
 
   return (
     <section className="panel">
-      <div className="panel-title">// asset tree</div>
+      <div className="panel-title">// swap tree</div>
       <div className="tree">{renderTree()}</div>
     </section>
   );
 }
-

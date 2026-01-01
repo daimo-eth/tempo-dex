@@ -6,14 +6,15 @@ import { parseUnits, type Address } from "viem";
 import { useAccount, WagmiProvider } from "wagmi";
 import {
   AssetsBox,
-  AssetTreeBox,
   HistoryBox,
+  SwapTreeBox,
   SwapBox,
   TabBar,
 } from "./components";
 import { TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
 import "./style.css";
+import { getTokenState, loadTokens } from "./tokens";
 import type { QuoteState } from "./types";
 import { config } from "./wagmi";
 
@@ -26,10 +27,6 @@ const DEBUG_WALLET_ADDR: Address | null = null;
 // -----------------------------------------------------------------------------
 
 const queryClient = new QueryClient();
-
-// Default tokens (must match TOKENS array exactly)
-const DEFAULT_FROM: Address = "0x20c0000000000000000000000000000000000001"; // AlphaUSD
-const DEFAULT_TO: Address = "0x20c0000000000000000000000000000000000002"; // BetaUSD
 
 type Tab = "dex" | "assets";
 
@@ -59,15 +56,18 @@ function Page() {
   const address = DEBUG_WALLET_ADDR ?? connectedAddress;
   const isConnected = DEBUG_WALLET_ADDR ? true : walletConnected;
 
+  // Token loading state
+  const [tokensReady, setTokensReady] = useState(false);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<Tab>("dex");
 
   // Block number - the single source of truth for data coherence
   const [blockNumber, setBlockNumber] = useState<bigint | null>(null);
 
-  // Core state - minimal
-  const [fromToken, setFromToken] = useState<Address>(DEFAULT_FROM);
-  const [toToken, setToToken] = useState<Address>(DEFAULT_TO);
+  // Core state - minimal (initialized after tokens load)
+  const [fromToken, setFromToken] = useState<Address | null>(null);
+  const [toToken, setToToken] = useState<Address | null>(null);
   const [amount, setAmount] = useState("100");
 
   // Quote state - single object
@@ -80,6 +80,23 @@ function Page() {
   // Debounce ref for quote fetching
   const quoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastQuoteParamsRef = useRef<string>("");
+
+  // -----------------------------------------------------------------------------
+  // Load tokens on mount
+  // -----------------------------------------------------------------------------
+
+  useEffect(() => {
+    loadTokens().then((state) => {
+      if (!state.error && state.tokens.length > 0) {
+        // Set defaults from first two tokens if available
+        if (state.tokens.length >= 2) {
+          setFromToken(state.tokens[1]); // First non-root token
+          setToToken(state.tokens[2] ?? state.tokens[0]); // Second non-root or root
+        }
+        setTokensReady(true);
+      }
+    });
+  }, []);
 
   // -----------------------------------------------------------------------------
   // Refresh - the single path for updating data
@@ -152,7 +169,7 @@ function Page() {
 
   // Re-fetch quote when block number changes
   useEffect(() => {
-    if (blockNumber !== null) {
+    if (blockNumber !== null && fromToken && toToken) {
       triggerQuote(fromToken, toToken, amount, blockNumber);
     }
   }, [blockNumber, fromToken, toToken, amount, triggerQuote]);
@@ -175,6 +192,20 @@ function Page() {
     refresh();
   }, [refresh]);
 
+  // Show loading until tokens are ready
+  if (!tokensReady || !fromToken || !toToken) {
+    return (
+      <main className="page">
+        <header className="header">
+          <h1>TEMPO</h1>
+          <div className="header-right">
+            <span className="badge">loading...</span>
+          </div>
+        </header>
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       <header className="header">
@@ -190,7 +221,7 @@ function Page() {
 
       {activeTab === "dex" && (
         <>
-          <AssetTreeBox fromToken={fromToken} toToken={toToken} quote={quote} />
+          <SwapTreeBox fromToken={fromToken} toToken={toToken} quote={quote} />
 
           <SwapBox
             fromToken={fromToken}

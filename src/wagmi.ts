@@ -5,7 +5,19 @@ import { injected } from "wagmi/connectors";
 
 export const config = createConfig({
   chains: [tempoTestnet],
-  connectors: [webAuthn({ keyManager: KeyManager.localStorage() }), injected()],
+  connectors: [
+    webAuthn({
+      keyManager: KeyManager.localStorage(),
+      // Use platform authenticator (TouchID, FaceID, password manager)
+      // instead of external security keys
+      createOptions: {
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+        },
+      } as unknown as Parameters<typeof webAuthn>[0]["createOptions"],
+    }),
+    injected(),
+  ],
   transports: {
     [tempoTestnet.id]: http(),
   },
