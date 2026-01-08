@@ -135,8 +135,8 @@ function Page() {
       const amountIn = parseUnits(amountStr, TOKEN_DECIMALS);
       const paramsKey = `${from}-${to}-${amountIn.toString()}-${block.toString()}`;
 
-      // Skip if same params
-      if (paramsKey === lastQuoteParamsRef.current && quote.data) {
+      // Skip if same params (already fetched this exact quote)
+      if (paramsKey === lastQuoteParamsRef.current) {
         return;
       }
       lastQuoteParamsRef.current = paramsKey;
@@ -151,7 +151,7 @@ function Page() {
         setQuote({ loading: false, error: null, data: result.quote });
       }
     },
-    [quote.data]
+    [] // No dependencies - uses refs for deduplication
   );
 
   // Debounced quote trigger - called when inputs change
