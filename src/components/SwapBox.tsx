@@ -1,5 +1,5 @@
 // SwapBox - swap form, wallet connection, and execution
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
 import {
   encodeFunctionData,
@@ -8,7 +8,6 @@ import {
   maxUint256,
   parseUnits,
 } from "viem";
-import { tempoTestnet } from "viem/chains";
 import {
   useAccount,
   useConnect,
@@ -22,7 +21,15 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { DEX_ABI, DEX_ADDRESS, TOKEN_DECIMALS } from "../config";
+import {
+  DEX_ABI,
+  DEX_ADDRESS,
+  EXPLORER_URL,
+  FAUCET_URL,
+  ROOT_TOKEN,
+  tempoModerato,
+  TOKEN_DECIMALS,
+} from "../config";
 import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
 import { shortenAddress } from "../utils";
@@ -31,9 +38,8 @@ import { shortenAddress } from "../utils";
 // Constants
 // -----------------------------------------------------------------------------
 
-const REQUIRED_CHAIN_ID = tempoTestnet.id;
+const REQUIRED_CHAIN_ID = tempoModerato.id;
 const SLIPPAGE_TOLERANCE = 0.005; // 0.5%
-const EXPLORER_URL = tempoTestnet.blockExplorers.default.url;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -77,6 +83,9 @@ export function SwapBox({
 }: SwapBoxProps) {
   // Get tokens from TokenManager
   const { tokens, tokenMeta } = getTokenState();
+
+  // Ref for amount input (for re-focusing after swap)
+  const amountInputRef = useRef<HTMLInputElement>(null);
 
   const {
     address,
@@ -461,6 +470,10 @@ export function SwapBox({
   const insufficientBalance =
     isConnected && parsedAmount > fromBalanceFormatted;
 
+  // Check if user has 0 pathUSD (root token) - show faucet link
+  const rootTokenBalance = balances[ROOT_TOKEN] ?? 0n;
+  const hasZeroPathUSD = isConnected && rootTokenBalance === 0n;
+
   const handleDisconnect = () => {
     if (window.confirm("Disconnect wallet?")) {
       disconnect();
@@ -745,6 +758,7 @@ export function SwapBox({
         <div className="field">
           <label htmlFor="amount">amount</label>
           <input
+            ref={amountInputRef}
             id="amount"
             inputMode="decimal"
             value={amount}
@@ -766,9 +780,28 @@ export function SwapBox({
                 swapped {swapResult.fromAmount} {swapResult.fromSymbol} →{" "}
                 {swapResult.toAmount} {swapResult.toSymbol}
               </span>
-              <button className="btn-link" onClick={() => setSwapResult(null)}>
+              <button
+                className="btn-link"
+                onClick={() => {
+                  setSwapResult(null);
+                  setAmount("");
+                  amountInputRef.current?.focus();
+                }}
+              >
                 continue
               </button>
+            </div>
+          ) : hasZeroPathUSD ? (
+            <div className="quote-row">
+              <span>no pathUSD balance</span>
+              <a
+                className="btn-link"
+                href={FAUCET_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                get faucet funds
+              </a>
             </div>
           ) : execBlockedBecause ? (
             <div>{execBlockedBecause}</div>

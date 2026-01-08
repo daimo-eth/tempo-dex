@@ -10,7 +10,7 @@ import { getSymbol } from "./tokens";
 // -----------------------------------------------------------------------------
 
 const INDEX_SUPPLY_API = "https://api.indexsupply.net/v2/query";
-const TEMPO_CHAIN_ID = 42429;
+const TEMPO_CHAIN_ID = 42431;
 
 // API key injected at build time via esbuild --define
 // Set INDEX_SUPPLY_API_KEY env var before building to enable authentication

@@ -1,13 +1,13 @@
 // TokenManager - loads tokens from public tokenlist and chain
 import { type Address, createPublicClient, getAddress, http } from "viem";
-import { tempoTestnet } from "viem/chains";
+import { tempoModerato } from "./config";
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
 const TOKENLIST_URL =
-  "https://tempoxyz.github.io/tempo-apps/42429/tokenlist.json";
+  "https://tempoxyz.github.io/tempo-apps/42431/tokenlist.json";
 
 const TIP20_ABI = [
   {
@@ -21,13 +21,16 @@ const TIP20_ABI = [
 
 // Fallback parent relationships for when parent() call fails
 // These are manually set based on known token tree structure
-const FALLBACK_PARENTS: Record<string, string> = {
-  "0x20C0000000000000000000000000000000000001":
-    "0x20C0000000000000000000000000000000000000", // AlphaUSD -> pathUSD
-  "0x20C0000000000000000000000000000000000002":
-    "0x20C0000000000000000000000000000000000000", // BetaUSD -> pathUSD
-  "0x20C0000000000000000000000000000000000003":
-    "0x20C0000000000000000000000000000000000001", // ThetaUSD -> AlphaUSD
+const FALLBACK_PARENTS: Record<Address, Address> = {
+  [getAddress("0x20C0000000000000000000000000000000000001")]: getAddress(
+    "0x20C0000000000000000000000000000000000000"
+  ), // AlphaUSD -> pathUSD
+  [getAddress("0x20C0000000000000000000000000000000000002")]: getAddress(
+    "0x20C0000000000000000000000000000000000000"
+  ), // BetaUSD -> pathUSD
+  [getAddress("0x20C0000000000000000000000000000000000003")]: getAddress(
+    "0x20C0000000000000000000000000000000000001"
+  ), // ThetaUSD -> AlphaUSD
 };
 
 // -----------------------------------------------------------------------------
@@ -68,7 +71,7 @@ export interface TokenManagerState {
 // -----------------------------------------------------------------------------
 
 const client = createPublicClient({
-  chain: tempoTestnet,
+  chain: tempoModerato,
   transport: http(),
 });
 
@@ -121,7 +124,7 @@ async function doLoadTokens(): Promise<TokenManagerState> {
     }
 
     const data: TokenlistResponse = await res.json();
-    const entries = data.tokens.filter((t) => t.chainId === tempoTestnet.id);
+    const entries = data.tokens.filter((t) => t.chainId === tempoModerato.id);
 
     // Normalize addresses
     const tokens: Address[] = entries.map((t) => getAddress(t.address));

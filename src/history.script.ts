@@ -1,11 +1,11 @@
 // Test script for history fetching
 // Run with: npx tsx src/history.script.ts
 
-import type { Address } from "viem";
+import { getAddress } from "viem";
 import { fetchBlockNumber } from "./data";
 import { fetchSwapHistory, formatSwapSummary } from "./indexSupply";
 
-const DEBUG_WALLET: Address = "0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D";
+const DEBUG_WALLET = getAddress("0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D");
 
 async function main() {
   console.log("Fetching swap history for", DEBUG_WALLET);

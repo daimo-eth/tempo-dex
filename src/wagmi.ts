@@ -1,10 +1,10 @@
 import { KeyManager, webAuthn } from "tempo.ts/wagmi";
-import { tempoTestnet } from "viem/chains";
 import { createConfig, http } from "wagmi";
 import { injected } from "wagmi/connectors";
+import { tempoModerato } from "./config";
 
 export const config = createConfig({
-  chains: [tempoTestnet],
+  chains: [tempoModerato],
   connectors: [
     webAuthn({
       keyManager: KeyManager.localStorage(),
@@ -19,6 +19,6 @@ export const config = createConfig({
     injected(),
   ],
   transports: {
-    [tempoTestnet.id]: http(),
+    [tempoModerato.id]: http(),
   },
 });

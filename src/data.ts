@@ -2,8 +2,13 @@
 // All queries use a consistent block number for data coherence
 import type { Address } from "viem";
 import { createPublicClient, formatUnits, getAddress, http } from "viem";
-import { tempoTestnet } from "viem/chains";
-import { DEX_ABI, DEX_ADDRESS, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
+import {
+  DEX_ABI,
+  DEX_ADDRESS,
+  ROOT_TOKEN,
+  tempoModerato,
+  TOKEN_DECIMALS,
+} from "./config";
 import { getTokenState } from "./tokens";
 import type { Quote } from "./types";
 
@@ -15,7 +20,7 @@ const rootToken = getAddress(ROOT_TOKEN);
 // -----------------------------------------------------------------------------
 
 const client = createPublicClient({
-  chain: tempoTestnet,
+  chain: tempoModerato,
   transport: http(),
 });
 

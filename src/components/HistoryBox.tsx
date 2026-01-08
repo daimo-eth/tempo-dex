@@ -1,9 +1,8 @@
 // HistoryBox - displays swap history for connected wallet
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
-import { tempoTestnet } from "viem/chains";
-import { TOKEN_DECIMALS } from "../config";
+import { EXPLORER_URL, TOKEN_DECIMALS } from "../config";
 import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
 import { getSymbol } from "../tokens";
 import { shortenAddress } from "../utils";
@@ -12,7 +11,6 @@ import { shortenAddress } from "../utils";
 // Constants
 // -----------------------------------------------------------------------------
 
-const EXPLORER_URL = tempoTestnet.blockExplorers.default.url;
 
 // -----------------------------------------------------------------------------
 // Types

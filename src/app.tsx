@@ -11,7 +11,7 @@ import {
   SwapBox,
   TabBar,
 } from "./components";
-import { TOKEN_DECIMALS } from "./config";
+import { NETWORK_BADGE, TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
 import "./style.css";
 import { getTokenState, loadTokens } from "./tokens";
@@ -19,7 +19,7 @@ import type { QuoteState } from "./types";
 import { config } from "./wagmi";
 
 // Debug: set to an address to override connected wallet (null in prod)
-// const DEBUG_WALLET_ADDR: Address | null = "0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D";
+// const DEBUG_WALLET_ADDR = getAddress("0xc60A0A0E8bBc32DAC2E03030989AD6BEe45A874D");
 const DEBUG_WALLET_ADDR: Address | null = null;
 
 // -----------------------------------------------------------------------------
@@ -215,7 +215,7 @@ function Page() {
           {blockNumber !== null && (
             <span className="block-number">#{blockNumber.toString()}</span>
           )}
-          <span className="badge">testnet</span>
+          <span className="badge">{NETWORK_BADGE}</span>
         </div>
       </header>
 
