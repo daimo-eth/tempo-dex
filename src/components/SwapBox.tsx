@@ -283,9 +283,15 @@ export function SwapBox({
       : 0n;
 
   const handleSwap = () => {
+    // Use quote path for multi-hop routing
+    const path = quote.data?.path;
+    if (!path || path.length < 2) {
+      console.log("[swap] early return - no valid path");
+      return;
+    }
+
     console.log("[swap] handleSwap called", {
-      fromToken,
-      toToken,
+      path,
       amountIn: amountIn.toString(),
       minAmountOut: minAmountOut.toString(),
     });
@@ -305,12 +311,23 @@ export function SwapBox({
     });
     setSwapResult(null);
 
+    // Execute only the first hop - for multi-hop we need batched calls
+    // For non-batched wallets with multi-hop paths, show error
+    if (path.length > 2) {
+      setSwapResult({
+        type: "error",
+        message: "multi-hop swaps require webauthn wallet",
+      });
+      return;
+    }
+
+    // Single hop swap (adjacent tokens)
     swapWrite.writeContract(
       {
         address: DEX_ADDRESS,
         abi: DEX_ABI,
         functionName: "swapExactAmountIn",
-        args: [fromToken, toToken, amountIn, minAmountOut],
+        args: [path[0], path[1], amountIn, minAmountOut],
       },
       {
         onError: (error) => {
@@ -380,11 +397,17 @@ export function SwapBox({
   const isBatchedPending = batchedSwap.isPending || isBatchedConfirming;
 
   const handleBatchedSwap = () => {
+    // Use quote path for multi-hop routing
+    const path = quote.data?.path;
+    const amounts = quote.data?.amounts;
+    if (!path || path.length < 2 || !amounts) {
+      console.log("[batchedSwap] early return - no valid path");
+      return;
+    }
+
     console.log("[batchedSwap] handleBatchedSwap called", {
-      fromToken,
-      toToken,
-      amountIn: amountIn.toString(),
-      minAmountOut: minAmountOut.toString(),
+      path,
+      amounts: amounts.map((a) => a.toString()),
       needsApproval,
     });
 
@@ -408,15 +431,25 @@ export function SwapBox({
       });
     }
 
-    calls.push({
-      to: DEX_ADDRESS,
-      value: 0n,
-      data: encodeFunctionData({
-        abi: DEX_ABI,
-        functionName: "swapExactAmountIn",
-        args: [fromToken, toToken, amountIn, minAmountOut],
-      }),
-    });
+    // Add a swap call for each hop in the path
+    for (let i = 0; i < path.length - 1; i++) {
+      const hopIn = path[i];
+      const hopOut = path[i + 1];
+      const hopAmountIn = amounts[i];
+      // For intermediate hops, use 0 minAmountOut (slippage only on final output)
+      // For last hop, use minAmountOut with slippage protection
+      const hopMinOut = i === path.length - 2 ? minAmountOut : 0n;
+
+      calls.push({
+        to: DEX_ADDRESS,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: DEX_ABI,
+          functionName: "swapExactAmountIn",
+          args: [hopIn, hopOut, hopAmountIn, hopMinOut],
+        }),
+      });
+    }
 
     // Capture params for success message
     const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
