@@ -220,20 +220,6 @@ const ORDERBOOK_ABI = [
     outputs: [{ type: "uint32" }],
   },
   {
-    name: "MIN_TICK",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [],
-    outputs: [{ type: "int16" }],
-  },
-  {
-    name: "MAX_TICK",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [],
-    outputs: [{ type: "int16" }],
-  },
-  {
     name: "TICK_SPACING",
     type: "function",
     stateMutability: "pure",
@@ -241,6 +227,75 @@ const ORDERBOOK_ABI = [
     outputs: [{ type: "int16" }],
   },
 ] as const;
+
+// -----------------------------------------------------------------------------
+// Orderbook caches (pure/constant values)
+// -----------------------------------------------------------------------------
+
+let cachedConstants: { priceScale: number; tickSpacing: number } | null = null;
+const pairKeyCache = new Map<string, `0x${string}`>();
+const tickPriceCache = new Map<number, number>();
+
+async function getOrderbookConstants(): Promise<{
+  priceScale: number;
+  tickSpacing: number;
+}> {
+  if (cachedConstants) return cachedConstants;
+
+  const [priceScale, tickSpacing] = await Promise.all([
+    client.readContract({
+      address: DEX_ADDRESS,
+      abi: ORDERBOOK_ABI,
+      functionName: "PRICE_SCALE",
+    }),
+    client.readContract({
+      address: DEX_ADDRESS,
+      abi: ORDERBOOK_ABI,
+      functionName: "TICK_SPACING",
+    }),
+  ]);
+
+  cachedConstants = {
+    priceScale: Number(priceScale),
+    tickSpacing: Number(tickSpacing),
+  };
+  return cachedConstants;
+}
+
+async function getPairKey(
+  childToken: Address,
+  parentToken: Address
+): Promise<`0x${string}`> {
+  const cacheKey = `${childToken}-${parentToken}`;
+  const cached = pairKeyCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pairKey = await client.readContract({
+    address: DEX_ADDRESS,
+    abi: ORDERBOOK_ABI,
+    functionName: "pairKey",
+    args: [childToken, parentToken],
+  });
+
+  pairKeyCache.set(cacheKey, pairKey);
+  return pairKey;
+}
+
+async function getTickPrice(tick: number, priceScale: number): Promise<number> {
+  const cached = tickPriceCache.get(tick);
+  if (cached !== undefined) return cached;
+
+  const priceRaw = await client.readContract({
+    address: DEX_ADDRESS,
+    abi: ORDERBOOK_ABI,
+    functionName: "tickToPrice",
+    args: [tick],
+  });
+
+  const price = Number(priceRaw) / priceScale;
+  tickPriceCache.set(tick, price);
+  return price;
+}
 
 /** Fetch orderbook liquidity for a child/parent pair at a specific block */
 export async function fetchPairLiquidity(
@@ -254,55 +309,35 @@ export async function fetchPairLiquidity(
   }
 
   try {
-    const pairKey = await client.readContract({
+    // Fetch cached constants and pairKey in parallel
+    const [{ priceScale, tickSpacing }, pairKey] = await Promise.all([
+      getOrderbookConstants(),
+      getPairKey(childToken, parent),
+    ]);
+
+    // Only this needs block number - it's the dynamic data
+    const book = await client.readContract({
       address: DEX_ADDRESS,
       abi: ORDERBOOK_ABI,
-      functionName: "pairKey",
-      args: [childToken, parent],
+      functionName: "books",
+      args: [pairKey],
+      blockNumber,
     });
-
-    const [book, priceScale, tickSpacing] = await Promise.all([
-      client.readContract({
-        address: DEX_ADDRESS,
-        abi: ORDERBOOK_ABI,
-        functionName: "books",
-        args: [pairKey],
-        blockNumber,
-      }),
-      client.readContract({
-        address: DEX_ADDRESS,
-        abi: ORDERBOOK_ABI,
-        functionName: "PRICE_SCALE",
-      }),
-      client.readContract({
-        address: DEX_ADDRESS,
-        abi: ORDERBOOK_ABI,
-        functionName: "TICK_SPACING",
-      }),
-    ]);
 
     const bestBidTick = book.bestBidTick;
     const bestAskTick = book.bestAskTick;
 
-    const scale = Number(priceScale);
-    const spacing = Number(tickSpacing);
-
     // When no liquidity exists, contract returns bestAskTick=bestBidTick=0,
     // so the loop produces a single tick at 0.
     const ticks: number[] = [];
-    for (let t = bestAskTick; t >= bestBidTick; t -= spacing) {
+    for (let t = bestAskTick; t >= bestBidTick; t -= tickSpacing) {
       ticks.push(t);
     }
 
-    // Fetch both bid and ask liquidity at each tick in parallel
+    // Fetch tick prices (cached) and liquidity levels (dynamic) in parallel
     const tickPromises = ticks.map(async (tick) => {
-      const [priceRaw, bidLevel, askLevel] = await Promise.all([
-        client.readContract({
-          address: DEX_ADDRESS,
-          abi: ORDERBOOK_ABI,
-          functionName: "tickToPrice",
-          args: [tick],
-        }),
+      const [price, bidLevel, askLevel] = await Promise.all([
+        getTickPrice(tick, priceScale),
         client.readContract({
           address: DEX_ADDRESS,
           abi: ORDERBOOK_ABI,
@@ -320,14 +355,13 @@ export async function fetchPairLiquidity(
       ]);
       return {
         tick,
-        price: Number(priceRaw) / scale,
+        price,
         bidLiquidity: bidLevel[2],
         askLiquidity: askLevel[2],
       };
     });
 
     const tickRows = await Promise.all(tickPromises);
-    console.log(`Loaded ticks for pair ${pairKey}`, tickRows);
 
     return computePairLiquidity(childToken, parent, tickRows);
   } catch (err) {

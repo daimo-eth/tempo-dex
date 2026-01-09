@@ -1,16 +1,11 @@
 // HistoryBox - displays swap history for connected wallet
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
 import { EXPLORER_URL, TOKEN_DECIMALS } from "../config";
 import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
 import { getSymbol } from "../tokens";
 import { shortenAddress } from "../utils";
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
 
 // -----------------------------------------------------------------------------
 // Types
@@ -38,29 +33,29 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     swaps: [],
   });
 
+  // Deduplication: track last fetched params
+  const lastFetchRef = useRef<string>("");
+
   useEffect(() => {
+    const fetchKey = `${address}-${blockNumber}`;
+    if (fetchKey === lastFetchRef.current) return;
+    lastFetchRef.current = fetchKey;
+
     let cancelled = false;
 
-    async function load() {
-      // Keep existing swaps while loading (stale-while-revalidate)
-      setState((s) => ({ ...s, loading: true }));
-
-      try {
-        const swaps = await fetchSwapHistory(address, blockNumber, 20);
+    fetchSwapHistory(address, blockNumber, 20)
+      .then((swaps) => {
         if (!cancelled) {
           setState({ loading: false, error: null, swaps });
         }
-      } catch (err) {
+      })
+      .catch((err) => {
         if (!cancelled) {
           const message =
             err instanceof Error ? err.message : "failed to load history";
-          // Keep existing swaps on error too
           setState((s) => ({ ...s, loading: false, error: message }));
         }
-      }
-    }
-
-    load();
+      });
 
     return () => {
       cancelled = true;

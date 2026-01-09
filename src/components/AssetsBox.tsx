@@ -1,5 +1,5 @@
 // AssetsBox - displays token tree with selected pair liquidity
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { getAddress } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
@@ -40,15 +40,22 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
   );
   const [liquidity, setLiquidity] = useState<LiquidityState | null>(null);
 
+  // Deduplication: track last fetched params to avoid duplicate fetches
+  const lastFetchRef = useRef<string>("");
+
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
 
   // Fetch liquidity when selected token or block number changes
   useEffect(() => {
+    const fetchKey = `${selectedToken}-${blockNumber}`;
+    if (fetchKey === lastFetchRef.current) return;
+    lastFetchRef.current = fetchKey;
+
     let cancelled = false;
     const isTokenChange = liquidity?.asset !== selectedToken;
 
-    // Set loading state
+    // Set loading state only on token change (stale-while-revalidate for block changes)
     if (isTokenChange) {
       setLiquidity({
         asset: selectedToken,
@@ -57,10 +64,6 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
         error: null,
         data: null,
       });
-    } else {
-      setLiquidity((prev) =>
-        prev ? { ...prev, block: blockNumber, loading: true } : null
-      );
     }
 
     fetchPairLiquidity(selectedToken, blockNumber).then((result) => {
@@ -87,8 +90,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToken, blockNumber]);
+  }, [selectedToken, blockNumber, liquidity?.asset]);
 
   const handleSelectToken = (addr: Address) => {
     if (addr !== rootToken) {
@@ -182,17 +184,6 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
     }
 
     const { midPrice, tickRows } = liquidity.data;
-
-    // Console log market info
-    if (tickRows.length > 0) {
-      const minTick = tickRows[tickRows.length - 1].tick;
-      const maxTick = tickRows[0].tick;
-      const minPrice = tickRows[tickRows.length - 1].price;
-      const maxPrice = tickRows[0].price;
-      console.log(
-        `${pairName}, min tick ${minTick} = ${minPrice.toFixed(5)}, max tick ${maxTick} = ${maxPrice.toFixed(5)}`
-      );
-    }
 
     // Format liquidity
     const formatLiq = (liq: bigint, price: number, isBid: boolean) => {
