@@ -394,11 +394,12 @@ export function SwapBox({
     }
 
     // Build calls array - include approve if needed
-    const calls: { to: Address; data: `0x${string}` }[] = [];
+    const calls: { to: Address; data: `0x${string}`; value: bigint }[] = [];
 
     if (needsApproval) {
       calls.push({
         to: fromToken,
+        value: 0n,
         data: encodeFunctionData({
           abi: erc20Abi,
           functionName: "approve",
@@ -409,6 +410,7 @@ export function SwapBox({
 
     calls.push({
       to: DEX_ADDRESS,
+      value: 0n,
       data: encodeFunctionData({
         abi: DEX_ABI,
         functionName: "swapExactAmountIn",
