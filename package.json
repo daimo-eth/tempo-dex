@@ -16,7 +16,7 @@
     "react-dom": "^18.3.1",
     "serve": "^14.2.4",
     "tempo.ts": "^0.12.1",
-    "viem": "^2.43.5",
+    "viem": "^2.44.0",
     "wagmi": "^2.19.5"
   },
   "devDependencies": {

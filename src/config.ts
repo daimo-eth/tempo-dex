@@ -1,31 +1,10 @@
-import { type Address, defineChain, getAddress } from "viem";
+import { getAddress } from "viem";
+
+import { tempoModerato } from "viem/chains";
 
 // -----------------------------------------------------------------------------
 // Chain configuration - moderato testnet
 // -----------------------------------------------------------------------------
-
-export const tempoModerato = defineChain({
-  id: 42431,
-  name: "Tempo Moderato Testnet",
-  nativeCurrency: {
-    name: "USD",
-    symbol: "USD",
-    decimals: 6,
-  },
-  rpcUrls: {
-    default: {
-      http: ["https://rpc.moderato.tempo.xyz"],
-      webSocket: ["wss://rpc.moderato.tempo.xyz"],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: "Tempo Explorer",
-      url: "https://explore.moderato.tempo.xyz",
-    },
-  },
-  testnet: true,
-});
 
 // Explorer URL export for convenience
 export const EXPLORER_URL = tempoModerato.blockExplorers.default.url;
