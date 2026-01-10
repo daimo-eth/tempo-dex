@@ -1,6 +1,7 @@
 import { getAddress } from "viem";
-
 import { tempoModerato } from "viem/chains";
+
+export { tempoModerato };
 
 // -----------------------------------------------------------------------------
 // Chain configuration - moderato testnet

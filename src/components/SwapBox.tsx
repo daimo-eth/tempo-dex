@@ -1,13 +1,8 @@
 // SwapBox - swap form, wallet connection, and execution
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Hooks } from "tempo.ts/wagmi";
 import type { Address } from "viem";
-import {
-  encodeFunctionData,
-  erc20Abi,
-  formatUnits,
-  maxUint256,
-  parseUnits,
-} from "viem";
+import { erc20Abi, formatUnits, maxUint256, parseUnits } from "viem";
 import {
   useAccount,
   useConnect,
@@ -15,9 +10,7 @@ import {
   useDisconnect,
   useReadContract,
   useReadContracts,
-  useSendCalls,
   useSwitchChain,
-  useWaitForCallsStatus,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
@@ -341,137 +334,49 @@ export function SwapBox({
     );
   };
 
-  // Batched swap (approve + swap in one call) for wallets that support it
-  const batchedSwap = useSendCalls();
-
-  // Wait for batched calls to complete
-  const { data: batchedStatus, isLoading: isBatchedConfirming } =
-    useWaitForCallsStatus({
-      id: batchedSwap.data?.id,
-      query: {
-        enabled: !!batchedSwap.data?.id,
-      },
-    });
-
-  // Track last batched swap params for success message
-  const [lastBatchedSwapParams, setLastBatchedSwapParams] = useState<{
-    fromAmount: string;
-    fromSymbol: string;
-    toAmount: string;
-    toSymbol: string;
-  } | null>(null);
-
-  // Log receipts and handle errors
-  useEffect(() => {
-    if (!batchedStatus) return;
-
-    console.log("[batchedSwap] status", batchedStatus);
-    if (batchedStatus.receipts) {
-      console.log("[batchedSwap] receipts", batchedStatus.receipts);
-    }
-
-    // Check status - "success"/"failure" string, or statusCode 200/500
-    const statusCode = (batchedStatus as { statusCode?: number }).statusCode;
-    const isSuccess = batchedStatus.status === "success" || statusCode === 200;
-    const isFailure = batchedStatus.status === "failure" || statusCode === 500;
-
-    if (isSuccess && lastBatchedSwapParams) {
-      setSwapResult({
-        type: "success",
-        ...lastBatchedSwapParams,
-      });
-      onSwapSuccess();
-      refetchAllowance();
-    } else if (isFailure) {
-      // Check for reverted receipts
-      const failedReceipt = batchedStatus.receipts?.find(
-        (r: { status: string }) => r.status === "reverted"
-      );
-      setSwapResult({
-        type: "error",
-        message: failedReceipt ? "transaction reverted" : "swap failed",
-      });
-    }
-  }, [batchedStatus, lastBatchedSwapParams, onSwapSuccess, refetchAllowance]);
-
-  const isBatchedPending = batchedSwap.isPending || isBatchedConfirming;
+  // Use tempo.ts sell hook for webAuthn wallet swaps
+  const tempoSell = Hooks.dex.useSellSync();
+  const isBatchedPending = tempoSell.isPending;
 
   const handleBatchedSwap = () => {
-    // Use quote path for multi-hop routing
-    const path = quote.data?.path;
-    const amounts = quote.data?.amounts;
-    if (!path || path.length < 2 || !amounts) {
-      console.log("[batchedSwap] early return - no valid path");
-      return;
-    }
-
-    console.log("[batchedSwap] handleBatchedSwap called", {
-      path,
-      amounts: amounts.map((a) => a.toString()),
-      needsApproval,
+    console.log("[tempoSell] handleBatchedSwap called", {
+      fromToken,
+      toToken,
+      amountIn: amountIn.toString(),
+      minAmountOut: minAmountOut.toString(),
     });
 
     if (amountIn === 0n) {
-      console.log("[batchedSwap] early return - zero amount");
+      console.log("[tempoSell] early return - zero amount");
       return;
     }
 
-    // Build calls array - include approve if needed
-    const calls: { to: Address; data: `0x${string}`; value: bigint }[] = [];
-
-    if (needsApproval) {
-      calls.push({
-        to: fromToken,
-        value: 0n,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [DEX_ADDRESS, amountIn],
-        }),
-      });
-    }
-
-    // Add a swap call for each hop in the path
-    for (let i = 0; i < path.length - 1; i++) {
-      const hopIn = path[i];
-      const hopOut = path[i + 1];
-      const hopAmountIn = amounts[i];
-      // For intermediate hops, use 0 minAmountOut (slippage only on final output)
-      // For last hop, use minAmountOut with slippage protection
-      const hopMinOut = i === path.length - 2 ? minAmountOut : 0n;
-
-      calls.push({
-        to: DEX_ADDRESS,
-        value: 0n,
-        data: encodeFunctionData({
-          abi: DEX_ABI,
-          functionName: "swapExactAmountIn",
-          args: [hopIn, hopOut, hopAmountIn, hopMinOut],
-        }),
-      });
-    }
-
-    // Capture params for success message
-    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
-    setLastBatchedSwapParams({
-      fromAmount: inputFormatted.toFixed(2),
-      fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
-      toAmount: amountOutFormatted.toFixed(2),
-      toSymbol: tokenMeta[toToken]?.symbol ?? "",
-    });
     setSwapResult(null);
 
-    batchedSwap.sendCalls(
+    // tempo.ts sell handles approval automatically
+    tempoSell.mutate(
       {
-        calls,
-        chainId: REQUIRED_CHAIN_ID,
+        tokenIn: fromToken,
+        tokenOut: toToken,
+        amountIn,
+        minAmountOut,
       },
       {
         onSuccess: (result) => {
-          console.log("[batchedSwap] sendCalls result", result);
+          console.log("[tempoSell] success", result);
+          const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
+          setSwapResult({
+            type: "success",
+            fromAmount: inputFormatted.toFixed(2),
+            fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
+            toAmount: amountOutFormatted.toFixed(2),
+            toSymbol: tokenMeta[toToken]?.symbol ?? "",
+          });
+          onSwapSuccess();
+          refetchAllowance();
         },
         onError: (error) => {
-          console.error("[batchedSwap] error", error);
+          console.error("[tempoSell] error", error);
           setSwapResult({
             type: "error",
             message: error.message || "swap failed",
