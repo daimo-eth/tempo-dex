@@ -276,15 +276,9 @@ export function SwapBox({
       : 0n;
 
   const handleSwap = () => {
-    // Use quote path for multi-hop routing
-    const path = quote.data?.path;
-    if (!path || path.length < 2) {
-      console.log("[swap] early return - no valid path");
-      return;
-    }
-
     console.log("[swap] handleSwap called", {
-      path,
+      fromToken,
+      toToken,
       amountIn: amountIn.toString(),
       minAmountOut: minAmountOut.toString(),
     });
@@ -304,23 +298,13 @@ export function SwapBox({
     });
     setSwapResult(null);
 
-    // Execute only the first hop - for multi-hop we need batched calls
-    // For non-batched wallets with multi-hop paths, show error
-    if (path.length > 2) {
-      setSwapResult({
-        type: "error",
-        message: "multi-hop swaps require webauthn wallet",
-      });
-      return;
-    }
-
-    // Single hop swap (adjacent tokens)
+    // DEX has built-in routing - single call works for any pair
     swapWrite.writeContract(
       {
         address: DEX_ADDRESS,
         abi: DEX_ABI,
         functionName: "swapExactAmountIn",
-        args: [path[0], path[1], amountIn, minAmountOut],
+        args: [fromToken, toToken, amountIn, minAmountOut],
       },
       {
         onError: (error) => {
