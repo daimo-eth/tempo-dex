@@ -19,6 +19,9 @@ export const config = createConfig({
     injected(),
   ],
   transports: {
-    [tempoModerato.id]: http(),
+    [tempoModerato.id]: http(undefined, {
+      retryCount: 5,
+      retryDelay: 150,
+    }),
   },
 });

@@ -21,7 +21,14 @@ const rootToken = getAddress(ROOT_TOKEN);
 
 const client = createPublicClient({
   chain: tempoModerato,
-  transport: http(),
+  transport: http(undefined, {
+    retryCount: 5,
+    retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
+    batch: true, // batch JSON-RPC calls
+  }),
+  batch: {
+    multicall: false, // chain doesn't have Multicall3
+  },
 });
 
 // -----------------------------------------------------------------------------
@@ -334,7 +341,8 @@ export async function fetchPairLiquidity(
       ticks.push(t);
     }
 
-    // Fetch tick prices (cached) and liquidity levels (dynamic) in parallel
+    // Fetch tick prices (cached) and liquidity levels in parallel
+    // JSON-RPC batching in transport combines these into fewer requests
     const tickPromises = ticks.map(async (tick) => {
       const [price, bidLevel, askLevel] = await Promise.all([
         getTickPrice(tick, priceScale),

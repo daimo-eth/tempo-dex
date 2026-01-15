@@ -1,5 +1,10 @@
 // TokenManager - loads tokens from public tokenlist and chain
-import { type Address, createPublicClient, getAddress, http } from "viem";
+import {
+  type Address,
+  createPublicClient,
+  getAddress,
+  http,
+} from "viem";
 import { tempoModerato } from "./config";
 
 // -----------------------------------------------------------------------------
@@ -72,7 +77,14 @@ export interface TokenManagerState {
 
 const client = createPublicClient({
   chain: tempoModerato,
-  transport: http(),
+  transport: http(undefined, {
+    retryCount: 5,
+    retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
+    batch: true, // batch JSON-RPC calls
+  }),
+  batch: {
+    multicall: false, // chain doesn't have Multicall3
+  },
 });
 
 // -----------------------------------------------------------------------------
@@ -142,15 +154,7 @@ async function doLoadTokens(): Promise<TokenManagerState> {
       };
     }
 
-    // Fetch parent for each token
-    const parentCalls = tokens.map((addr) => ({
-      address: addr,
-      abi: TIP20_ABI,
-      functionName: "parent" as const,
-    }));
-
-    // Try to fetch parent for each token via TIP20 parent() function
-    // Falls back to hardcoded relationships if contract call fails
+    // Fetch parent for each token (batched via JSON-RPC batching in transport)
     await Promise.all(
       tokens.map(async (addr) => {
         try {
