@@ -169,72 +169,6 @@ export interface PairLiquidity {
   tickRows: TickRow[]; // All ticks from highest (best ask) to lowest (best bid)
 }
 
-const ORDERBOOK_ABI = [
-  {
-    name: "pairKey",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [
-      { type: "address", name: "base" },
-      { type: "address", name: "quote" },
-    ],
-    outputs: [{ type: "bytes32" }],
-  },
-  {
-    name: "books",
-    type: "function",
-    stateMutability: "view",
-    inputs: [{ type: "bytes32", name: "pairKey" }],
-    outputs: [
-      {
-        type: "tuple",
-        components: [
-          { type: "address", name: "base" },
-          { type: "address", name: "quote" },
-          { type: "int16", name: "bestBidTick" },
-          { type: "int16", name: "bestAskTick" },
-        ],
-      },
-    ],
-  },
-  {
-    name: "getTickLevel",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { type: "address", name: "base" },
-      { type: "int16", name: "tick" },
-      { type: "bool", name: "isBid" },
-    ],
-    outputs: [
-      { type: "uint128", name: "head" },
-      { type: "uint128", name: "tail" },
-      { type: "uint128", name: "totalLiquidity" },
-    ],
-  },
-  {
-    name: "tickToPrice",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [{ type: "int16", name: "tick" }],
-    outputs: [{ type: "uint32", name: "price" }],
-  },
-  {
-    name: "PRICE_SCALE",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [],
-    outputs: [{ type: "uint32" }],
-  },
-  {
-    name: "TICK_SPACING",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [],
-    outputs: [{ type: "int16" }],
-  },
-] as const;
-
 // -----------------------------------------------------------------------------
 // Orderbook caches (pure/constant values)
 // -----------------------------------------------------------------------------
@@ -252,12 +186,12 @@ async function getOrderbookConstants(): Promise<{
   const [priceScale, tickSpacing] = await Promise.all([
     client.readContract({
       address: DEX_ADDRESS,
-      abi: ORDERBOOK_ABI,
+      abi: DEX_ABI,
       functionName: "PRICE_SCALE",
     }),
     client.readContract({
       address: DEX_ADDRESS,
-      abi: ORDERBOOK_ABI,
+      abi: DEX_ABI,
       functionName: "TICK_SPACING",
     }),
   ]);
@@ -279,7 +213,7 @@ async function getPairKey(
 
   const pairKey = await client.readContract({
     address: DEX_ADDRESS,
-    abi: ORDERBOOK_ABI,
+    abi: DEX_ABI,
     functionName: "pairKey",
     args: [childToken, parentToken],
   });
@@ -294,7 +228,7 @@ async function getTickPrice(tick: number, priceScale: number): Promise<number> {
 
   const priceRaw = await client.readContract({
     address: DEX_ADDRESS,
-    abi: ORDERBOOK_ABI,
+    abi: DEX_ABI,
     functionName: "tickToPrice",
     args: [tick],
   });
@@ -325,7 +259,7 @@ export async function fetchPairLiquidity(
     // Only this needs block number - it's the dynamic data
     const book = await client.readContract({
       address: DEX_ADDRESS,
-      abi: ORDERBOOK_ABI,
+      abi: DEX_ABI,
       functionName: "books",
       args: [pairKey],
       blockNumber,
@@ -334,10 +268,12 @@ export async function fetchPairLiquidity(
     const bestBidTick = book.bestBidTick;
     const bestAskTick = book.bestAskTick;
 
-    // When no liquidity exists, contract returns bestAskTick=bestBidTick=0,
-    // so the loop produces a single tick at 0.
+    // Iterate from lowest tick to highest tick
+    // bestAskTick can be < or > bestBidTick depending on orderbook state
+    const minTick = Math.min(bestBidTick, bestAskTick);
+    const maxTick = Math.max(bestBidTick, bestAskTick);
     const ticks: number[] = [];
-    for (let t = bestAskTick; t >= bestBidTick; t -= tickSpacing) {
+    for (let t = minTick; t <= maxTick; t += tickSpacing) {
       ticks.push(t);
     }
 
@@ -348,14 +284,14 @@ export async function fetchPairLiquidity(
         getTickPrice(tick, priceScale),
         client.readContract({
           address: DEX_ADDRESS,
-          abi: ORDERBOOK_ABI,
+          abi: DEX_ABI,
           functionName: "getTickLevel",
           args: [childToken, tick, true], // isBid = true
           blockNumber,
         }),
         client.readContract({
           address: DEX_ADDRESS,
-          abi: ORDERBOOK_ABI,
+          abi: DEX_ABI,
           functionName: "getTickLevel",
           args: [childToken, tick, false], // isBid = false
           blockNumber,
