@@ -730,15 +730,33 @@ export function SwapBox({
           </div>
         </div>
 
-        <div className="field">
-          <label htmlFor="amount">amount</label>
-          <input
-            ref={amountInputRef}
-            id="amount"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+        <div className="row">
+          <div className="field">
+            <label htmlFor="amount">amount</label>
+            <input
+              ref={amountInputRef}
+              id="amount"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="output">output</label>
+            <input
+              id="output"
+              disabled
+              value={
+                quote.loading && !quote.data
+                  ? ""
+                  : quote.error
+                    ? ""
+                    : amountOut > 0n
+                      ? amountOutFormatted.toFixed(2)
+                      : ""
+              }
+            />
+          </div>
         </div>
 
         <div className="quote">
@@ -780,11 +798,6 @@ export function SwapBox({
             </div>
           ) : execBlockedBecause ? (
             <div>{execBlockedBecause}</div>
-          ) : amountOut > 0n ? (
-            <div className="success">
-              outputs {amountOutFormatted.toFixed(2)}{" "}
-              {tokenMeta[toToken]?.symbol}
-            </div>
           ) : null}
         </div>
 

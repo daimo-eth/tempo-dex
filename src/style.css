@@ -263,6 +263,12 @@ input:focus {
   background: #fff;
 }
 
+input:disabled {
+  background: #e8eef4;
+  color: #1a1a2e;
+  cursor: default;
+}
+
 .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
