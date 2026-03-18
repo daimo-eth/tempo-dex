@@ -7,7 +7,7 @@ export const config = createConfig({
   chains: [chain],
   connectors: [
     webAuthn({
-      keyManager: KeyManager.localStorage(),
+      keyManager: KeyManager.localStorage({ key: `tempo.keys.${chain.id}` }),
       // Use platform authenticator (TouchID, FaceID, password manager)
       // instead of external security keys
       createOptions: {

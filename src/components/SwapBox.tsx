@@ -402,7 +402,7 @@ export function SwapBox({
     setSwapResult(null);
 
     batchedSwap.sendCalls(
-      { calls },
+      { calls, capabilities: { feeToken: fromToken } },
       {
         onSuccess: (result) => {
           console.log("[batchedSwap] sendCalls result", result);
