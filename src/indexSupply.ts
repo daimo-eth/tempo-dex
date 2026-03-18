@@ -2,7 +2,7 @@
 // Encapsulates all SQL queries to Index Supply for swap history
 
 import { getAddress, type Address } from "viem";
-import { TOKEN_DECIMALS } from "./config";
+import { chain, TOKEN_DECIMALS } from "./config";
 import { getSymbol } from "./tokens";
 
 // -----------------------------------------------------------------------------
@@ -10,7 +10,7 @@ import { getSymbol } from "./tokens";
 // -----------------------------------------------------------------------------
 
 const INDEX_SUPPLY_API = "https://api.indexsupply.net/v2/query";
-const TEMPO_CHAIN_ID = 42431;
+const TEMPO_CHAIN_ID = chain.id;
 
 // API key injected at build time via esbuild --define
 // Set INDEX_SUPPLY_API_KEY env var before building to enable authentication

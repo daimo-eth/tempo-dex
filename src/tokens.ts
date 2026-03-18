@@ -5,14 +5,12 @@ import {
   getAddress,
   http,
 } from "viem";
-import { tempoModerato } from "./config";
+import { chain, RPC_URL, TOKENLIST_URL } from "./config";
 
 // -----------------------------------------------------------------------------
 // Constants
 // -----------------------------------------------------------------------------
 
-const TOKENLIST_URL =
-  "https://tempoxyz.github.io/tempo-apps/42431/tokenlist.json";
 
 const TIP20_ABI = [
   {
@@ -76,8 +74,8 @@ export interface TokenManagerState {
 // -----------------------------------------------------------------------------
 
 const client = createPublicClient({
-  chain: tempoModerato,
-  transport: http(undefined, {
+  chain,
+  transport: http(RPC_URL, {
     retryCount: 5,
     retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
     batch: true, // batch JSON-RPC calls
@@ -136,7 +134,7 @@ async function doLoadTokens(): Promise<TokenManagerState> {
     }
 
     const data: TokenlistResponse = await res.json();
-    const entries = data.tokens.filter((t) => t.chainId === tempoModerato.id);
+    const entries = data.tokens.filter((t) => t.chainId === chain.id);
 
     // Normalize addresses
     const tokens: Address[] = entries.map((t) => getAddress(t.address));

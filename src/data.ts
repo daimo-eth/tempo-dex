@@ -3,10 +3,11 @@
 import type { Address } from "viem";
 import { createPublicClient, formatUnits, http } from "viem";
 import {
+  chain,
   DEX_ABI,
   DEX_ADDRESS,
+  RPC_URL,
   ROOT_TOKEN,
-  tempoModerato,
   TOKEN_DECIMALS,
 } from "./config";
 import { getTokenState } from "./tokens";
@@ -20,8 +21,8 @@ const rootToken = ROOT_TOKEN;
 // -----------------------------------------------------------------------------
 
 const client = createPublicClient({
-  chain: tempoModerato,
-  transport: http(undefined, {
+  chain,
+  transport: http(RPC_URL, {
     retryCount: 5,
     retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
     batch: true, // batch JSON-RPC calls

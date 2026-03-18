@@ -1,10 +1,10 @@
 import { createConfig, http } from "wagmi";
-import { KeyManager, webAuthn } from "wagmi/tempo";
 import { injected } from "wagmi/connectors";
-import { tempoModerato } from "./config";
+import { KeyManager, webAuthn } from "wagmi/tempo";
+import { chain, RPC_URL } from "./config";
 
 export const config = createConfig({
-  chains: [tempoModerato],
+  chains: [chain],
   connectors: [
     webAuthn({
       keyManager: KeyManager.localStorage(),
@@ -19,7 +19,7 @@ export const config = createConfig({
     injected(),
   ],
   transports: {
-    [tempoModerato.id]: http(undefined, {
+    [chain.id]: http(RPC_URL, {
       retryCount: 5,
       retryDelay: 150,
     }),

@@ -33,3 +33,9 @@ In every file, order code as:
 - Typecheck: `npm run typecheck`
 - Test: `npm test`
 
+## Network
+
+- Default network is mainnet (chain ID 4217). Set `TEMPO_NETWORK=moderato` for testnet.
+- Set `TEMPO_RPC_URL` to override the default RPC endpoint.
+- All chain-specific config flows from `src/config.ts`.
+

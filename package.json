@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
-    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
+    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
+    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
     "start": "serve public -l ${PORT:-8080}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"

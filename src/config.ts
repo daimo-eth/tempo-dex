@@ -1,21 +1,43 @@
-import { getAddress } from "viem";
-import { tempoModerato } from "viem/chains";
+import { type Chain, getAddress } from "viem";
+import { tempo, tempoModerato } from "viem/chains";
 import { Abis, Addresses } from "viem/tempo";
 
-export { tempoModerato };
-
 // -----------------------------------------------------------------------------
-// Chain configuration - moderato testnet
+// Build-time configuration (injected via esbuild --define)
 // -----------------------------------------------------------------------------
 
-// Explorer URL export for convenience
-export const EXPLORER_URL = tempoModerato.blockExplorers.default.url;
+declare const __TEMPO_NETWORK__: string | undefined;
+declare const __TEMPO_RPC_URL__: string | undefined;
+
+const network =
+  typeof __TEMPO_NETWORK__ !== "undefined" && __TEMPO_NETWORK__
+    ? __TEMPO_NETWORK__
+    : "mainnet";
+
+// -----------------------------------------------------------------------------
+// Chain configuration
+// -----------------------------------------------------------------------------
+
+export const chain: Chain =
+  network === "moderato" ? tempoModerato : tempo;
+
+// RPC URL - use env override or chain default
+export const RPC_URL =
+  typeof __TEMPO_RPC_URL__ !== "undefined" && __TEMPO_RPC_URL__
+    ? __TEMPO_RPC_URL__
+    : chain.rpcUrls.default.http[0];
+
+// Explorer URL
+export const EXPLORER_URL = chain.blockExplorers!.default.url;
 
 // Badge text for header display
-export const NETWORK_BADGE = "moderato testnet";
+export const NETWORK_BADGE = network === "moderato" ? "moderato testnet" : "mainnet";
 
-// Faucet URL for users with no balance
+// Faucet URL for users with no balance (testnet only)
 export const FAUCET_URL = "https://docs.tempo.xyz/quickstart/faucet";
+
+// Tokenlist URL (chain-specific)
+export const TOKENLIST_URL = `https://tempoxyz.github.io/tempo-apps/${chain.id}/tokenlist.json`;
 
 // -----------------------------------------------------------------------------
 // Token configuration (from viem/tempo)

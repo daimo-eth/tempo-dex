@@ -15,12 +15,12 @@ import {
   useWriteContract,
 } from "wagmi";
 import {
+  chain,
   DEX_ABI,
   DEX_ADDRESS,
   EXPLORER_URL,
   FAUCET_URL,
   ROOT_TOKEN,
-  tempoModerato,
   TOKEN_DECIMALS,
 } from "../config";
 import { getTokenState } from "../tokens";
@@ -31,7 +31,7 @@ import { shortenAddress } from "../utils";
 // Constants
 // -----------------------------------------------------------------------------
 
-const REQUIRED_CHAIN_ID = tempoModerato.id;
+const REQUIRED_CHAIN_ID = chain.id;
 const SLIPPAGE_TOLERANCE = 0.005; // 0.5%
 
 // -----------------------------------------------------------------------------
