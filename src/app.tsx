@@ -17,7 +17,7 @@ import {
   SwapBox,
   TabBar,
 } from "./components";
-import { NETWORK_BADGE, TOKEN_DECIMALS } from "./config";
+import { NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
 import "./style.css";
 import { getTokenState, loadTokens } from "./tokens";
@@ -127,10 +127,16 @@ function Page() {
   useEffect(() => {
     loadTokens().then((state) => {
       if (!state.error && state.tokens.length > 0) {
-        // Set defaults from first two tokens if available
-        if (state.tokens.length >= 2) {
-          setFromToken(state.tokens[1]); // First non-root token
-          setToToken(state.tokens[2] ?? state.tokens[0]); // Second non-root or root
+        // Default pair: USDC.e → pathUSD
+        const usdce = state.tokens.find(
+          (addr) => state.tokenMeta[addr]?.symbol === "USDC.e"
+        );
+        if (usdce) {
+          setFromToken(usdce);
+          setToToken(ROOT_TOKEN);
+        } else if (state.tokens.length >= 2) {
+          setFromToken(state.tokens[1]);
+          setToToken(state.tokens[0]);
         }
         setTokensReady(true);
       }

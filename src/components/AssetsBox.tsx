@@ -186,7 +186,12 @@ export function AssetsBox({
       return null;
     }
 
-    const { midPrice, tickRows } = liquidity.data;
+    const { midPrice, tickRows: allRows } = liquidity.data;
+
+    // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
+    const tickRows = allRows.filter(
+      (r) => r.bidLiquidity > 0n || r.askLiquidity > 0n
+    );
 
     // Format liquidity
     const formatLiq = (liq: bigint, price: number, isBid: boolean) => {

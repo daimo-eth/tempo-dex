@@ -173,6 +173,17 @@ export interface PairLiquidity {
 }
 
 // -----------------------------------------------------------------------------
+// Orderbook constants
+// -----------------------------------------------------------------------------
+
+// int16 sentinel values the contract uses for empty sides
+const INT16_MAX = 32767;
+const INT16_MIN = -32768;
+
+// Always show this many ticks beyond each side of the spread
+const DISP_MIN_TICKS = 4;
+
+// -----------------------------------------------------------------------------
 // Orderbook caches (pure/constant values)
 // -----------------------------------------------------------------------------
 
@@ -271,10 +282,22 @@ export async function fetchPairLiquidity(
     const bestBidTick = book.bestBidTick;
     const bestAskTick = book.bestAskTick;
 
-    // Iterate from lowest tick to highest tick
-    // bestAskTick can be < or > bestBidTick depending on orderbook state
-    const minTick = Math.min(bestBidTick, bestAskTick);
-    const maxTick = Math.max(bestBidTick, bestAskTick);
+    // Detect int16 sentinel values ("no liquidity on this side")
+    const bidEmpty = bestBidTick <= INT16_MIN;
+    const askEmpty = bestAskTick >= INT16_MAX;
+
+    if (bidEmpty && askEmpty) {
+      return computePairLiquidity(childToken, parent, []);
+    }
+
+    // Collapse sentinels to the live side
+    const effectiveBid = bidEmpty ? bestAskTick : bestBidTick;
+    const effectiveAsk = askEmpty ? bestBidTick : bestAskTick;
+
+    // Window: DISP_MIN_TICKS beyond each side of the spread
+    const pad = DISP_MIN_TICKS * tickSpacing;
+    const minTick = Math.min(effectiveBid, effectiveAsk) - pad;
+    const maxTick = Math.max(effectiveBid, effectiveAsk) + pad;
     const ticks: number[] = [];
     for (let t = minTick; t <= maxTick; t += tickSpacing) {
       ticks.push(t);
