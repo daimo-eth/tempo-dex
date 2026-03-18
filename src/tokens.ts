@@ -5,36 +5,8 @@ import {
   getAddress,
   http,
 } from "viem";
-import { chain, RPC_URL, TOKENLIST_URL } from "./config";
-
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
-
-const TIP20_ABI = [
-  {
-    name: "parent",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{ type: "address" }],
-  },
-] as const;
-
-// Fallback parent relationships for when parent() call fails
-// These are manually set based on known token tree structure
-const FALLBACK_PARENTS: Record<Address, Address> = {
-  [getAddress("0x20C0000000000000000000000000000000000001")]: getAddress(
-    "0x20C0000000000000000000000000000000000000"
-  ), // AlphaUSD -> pathUSD
-  [getAddress("0x20C0000000000000000000000000000000000002")]: getAddress(
-    "0x20C0000000000000000000000000000000000000"
-  ), // BetaUSD -> pathUSD
-  [getAddress("0x20C0000000000000000000000000000000000003")]: getAddress(
-    "0x20C0000000000000000000000000000000000001"
-  ), // ThetaUSD -> AlphaUSD
-};
+import { Abis } from "viem/tempo";
+import { chain, RPC_FETCH_OPTIONS, RPC_URL, TOKENLIST_URL } from "./config";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -79,6 +51,7 @@ const client = createPublicClient({
     retryCount: 5,
     retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
     batch: true, // batch JSON-RPC calls
+    fetchOptions: RPC_FETCH_OPTIONS,
   }),
   batch: {
     multicall: false, // chain doesn't have Multicall3
@@ -152,25 +125,21 @@ async function doLoadTokens(): Promise<TokenManagerState> {
       };
     }
 
-    // Fetch parent for each token (batched via JSON-RPC batching in transport)
+    // Fetch quoteToken (parent) for each token via TIP-20 ABI
     await Promise.all(
       tokens.map(async (addr) => {
         try {
-          const parentAddr = await client.readContract({
+          const quoteToken = await client.readContract({
             address: addr,
-            abi: TIP20_ABI,
-            functionName: "parent",
+            abi: Abis.tip20,
+            functionName: "quoteToken",
           });
           // Zero address means no parent (root token)
-          if (parentAddr !== "0x0000000000000000000000000000000000000000") {
-            tokenMeta[addr].parent = getAddress(parentAddr);
+          if (quoteToken !== "0x0000000000000000000000000000000000000000") {
+            tokenMeta[addr].parent = getAddress(quoteToken);
           }
         } catch {
-          // Try fallback parent relationship
-          const fallback = FALLBACK_PARENTS[addr];
-          if (fallback) {
-            tokenMeta[addr].parent = getAddress(fallback);
-          }
+          // Root token or unsupported - no parent
         }
       })
     );

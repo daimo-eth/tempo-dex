@@ -6,6 +6,7 @@ import {
   chain,
   DEX_ABI,
   DEX_ADDRESS,
+  RPC_FETCH_OPTIONS,
   RPC_URL,
   ROOT_TOKEN,
   TOKEN_DECIMALS,
@@ -26,6 +27,7 @@ const client = createPublicClient({
     retryCount: 5,
     retryDelay: 150, // exponential backoff: 150ms, 300ms, 600ms, 1200ms, 2400ms
     batch: true, // batch JSON-RPC calls
+    fetchOptions: RPC_FETCH_OPTIONS,
   }),
   batch: {
     multicall: false, // chain doesn't have Multicall3

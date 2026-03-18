@@ -1,4 +1,10 @@
 // Tempo DEX - Main application
+
+// BigInt can't be serialized by JSON.stringify (React 19 dev mode needs this)
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+  return this.toString();
+};
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";

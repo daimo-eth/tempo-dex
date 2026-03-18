@@ -1,7 +1,7 @@
 import { createConfig, http } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { KeyManager, webAuthn } from "wagmi/tempo";
-import { chain, RPC_URL } from "./config";
+import { chain, RPC_FETCH_OPTIONS, RPC_URL } from "./config";
 
 export const config = createConfig({
   chains: [chain],
@@ -22,6 +22,7 @@ export const config = createConfig({
     [chain.id]: http(RPC_URL, {
       retryCount: 5,
       retryDelay: 150,
+      fetchOptions: RPC_FETCH_OPTIONS,
     }),
   },
 });

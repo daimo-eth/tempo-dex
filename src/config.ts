@@ -22,10 +22,34 @@ export const chain: Chain =
   network === "moderato" ? tempoModerato : tempo;
 
 // RPC URL - use env override or chain default
-export const RPC_URL =
+// Browsers reject fetch() with credentials in URLs, so extract basic auth
+function parseRpcUrl(raw: string): {
+  url: string;
+  fetchOptions?: { headers: Record<string, string> };
+} {
+  try {
+    const parsed = new URL(raw);
+    if (parsed.username) {
+      const auth = btoa(`${parsed.username}:${parsed.password}`);
+      parsed.username = "";
+      parsed.password = "";
+      return {
+        url: parsed.toString(),
+        fetchOptions: { headers: { Authorization: `Basic ${auth}` } },
+      };
+    }
+  } catch {}
+  return { url: raw };
+}
+
+const rpcRaw =
   typeof __TEMPO_RPC_URL__ !== "undefined" && __TEMPO_RPC_URL__
     ? __TEMPO_RPC_URL__
     : chain.rpcUrls.default.http[0];
+
+const rpc = parseRpcUrl(rpcRaw);
+export const RPC_URL = rpc.url;
+export const RPC_FETCH_OPTIONS = rpc.fetchOptions;
 
 // Explorer URL
 export const EXPLORER_URL = chain.blockExplorers!.default.url;
