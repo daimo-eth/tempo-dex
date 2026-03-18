@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getAddress, isAddress, parseUnits, type Address } from "viem";
-import { useAccount, WagmiProvider } from "wagmi";
+import { useAccount, useDisconnect, WagmiProvider } from "wagmi";
 import {
   AssetsBox,
   HistoryBox,
@@ -17,12 +17,13 @@ import {
   SwapBox,
   TabBar,
 } from "./components";
-import { NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
+import { EXPLORER_URL, NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
 import "./style.css";
 import { getTokenState, loadTokens } from "./tokens";
 import { getNonRootTokens } from "./data";
 import type { QuoteState } from "./types";
+import { shortenAddress } from "./utils";
 import { config } from "./wagmi";
 
 // Debug: set to an address to override connected wallet (null in prod)
@@ -86,6 +87,7 @@ function App() {
 function Page() {
   const { address: connectedAddress, isConnected: walletConnected } =
     useAccount();
+  const { disconnect } = useDisconnect();
 
   // Debug override for testing
   const address = DEBUG_WALLET_ADDR ?? connectedAddress;
@@ -309,6 +311,22 @@ function Page() {
           <span className="badge">{NETWORK_BADGE}</span>
         </div>
       </header>
+
+      {isConnected && address && (
+        <div className="account-bar">
+          <a
+            className="btn-link"
+            href={`${EXPLORER_URL}/address/${address}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {shortenAddress(address)}
+          </a>
+          <button className="btn-link" onClick={() => disconnect()}>
+            disconnect
+          </button>
+        </div>
+      )}
 
       {activeTab === "dex" && (
         <>

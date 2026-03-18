@@ -6,7 +6,6 @@ import {
   useAccount,
   useConnect,
   useConnectors,
-  useDisconnect,
   useReadContract,
   useReadContracts,
   useSendCalls,
@@ -14,16 +13,9 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import {
-  chain,
-  DEX_ABI,
-  DEX_ADDRESS,
-  EXPLORER_URL,
-  TOKEN_DECIMALS,
-} from "../config";
+import { chain, DEX_ABI, DEX_ADDRESS, TOKEN_DECIMALS } from "../config";
 import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
-import { shortenAddress } from "../utils";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -84,7 +76,6 @@ export function SwapBox({
     chainId: walletChainId,
     connector,
   } = useAccount();
-  const { disconnect } = useDisconnect();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const connectors = useConnectors();
   const { connect } = useConnect({
@@ -448,12 +439,6 @@ export function SwapBox({
     isConnected &&
     tokens.every((addr) => (balances[addr] ?? 0n) === 0n);
 
-  const handleDisconnect = () => {
-    if (window.confirm("Disconnect wallet?")) {
-      disconnect();
-    }
-  };
-
   const formatBalance = (bal: bigint) => {
     const num = Number(formatUnits(bal, TOKEN_DECIMALS));
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
@@ -602,19 +587,6 @@ export function SwapBox({
           >
             {isSwitching ? "SWITCHING..." : "SWITCH CHAIN"}
           </button>
-          <div className="wallet-row">
-            <button className="btn-link" onClick={handleDisconnect}>
-              {shortenAddress(address!)}
-            </button>
-            <a
-              className="btn-link"
-              href={`${EXPLORER_URL}/address/${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              show account
-            </a>
-          </div>
         </div>
       );
     }
@@ -631,19 +603,6 @@ export function SwapBox({
           >
             {isBatchedPending ? "SWAPPING..." : "SWAP"}
           </button>
-          <div className="wallet-row">
-            <button className="btn-link" onClick={handleDisconnect}>
-              {shortenAddress(address!)}
-            </button>
-            <a
-              className="btn-link"
-              href={`${EXPLORER_URL}/address/${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              show account
-            </a>
-          </div>
         </div>
       );
     }
@@ -668,19 +627,6 @@ export function SwapBox({
             {isSwapPending ? "SWAPPING..." : "SWAP"}
           </button>
         )}
-        <div className="wallet-row">
-          <button className="btn-link" onClick={handleDisconnect}>
-            {shortenAddress(address!)}
-          </button>
-          <a
-            className="btn-link"
-            href={`${EXPLORER_URL}/address/${address}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            show account
-          </a>
-        </div>
       </div>
     );
   };
