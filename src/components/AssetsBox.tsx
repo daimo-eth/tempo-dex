@@ -16,6 +16,8 @@ import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "../utils";
 
 interface AssetsBoxProps {
   blockNumber: bigint;
+  selectedToken: Address | null;
+  onSelectToken: (addr: Address) => void;
 }
 
 interface LiquidityState {
@@ -30,13 +32,15 @@ interface LiquidityState {
 // Component
 // -----------------------------------------------------------------------------
 
-export function AssetsBox({ blockNumber }: AssetsBoxProps) {
+export function AssetsBox({
+  blockNumber,
+  selectedToken: selectedTokenProp,
+  onSelectToken,
+}: AssetsBoxProps) {
   const { tokens, tokenMeta } = getTokenState();
   const nonRootTokens = getNonRootTokens();
   const rootToken = ROOT_TOKEN;
-  const [selectedToken, setSelectedToken] = useState<Address>(
-    nonRootTokens[0] ?? tokens[1]
-  );
+  const selectedToken = selectedTokenProp ?? nonRootTokens[0] ?? tokens[1];
   const [liquidity, setLiquidity] = useState<LiquidityState | null>(null);
 
   // Deduplication: track last fetched params to avoid duplicate fetches
@@ -93,7 +97,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
 
   const handleSelectToken = (addr: Address) => {
     if (addr !== rootToken) {
-      setSelectedToken(addr);
+      onSelectToken(addr);
     }
   };
 

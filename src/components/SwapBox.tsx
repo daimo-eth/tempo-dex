@@ -19,8 +19,6 @@ import {
   DEX_ABI,
   DEX_ADDRESS,
   EXPLORER_URL,
-  FAUCET_URL,
-  ROOT_TOKEN,
   TOKEN_DECIMALS,
 } from "../config";
 import { getTokenState } from "../tokens";
@@ -445,9 +443,10 @@ export function SwapBox({
   const insufficientBalance =
     isConnected && parsedAmount > fromBalanceFormatted;
 
-  // Check if user has 0 pathUSD (root token) - show faucet link
-  const rootTokenBalance = balances[ROOT_TOKEN] ?? 0n;
-  const hasZeroPathUSD = isConnected && rootTokenBalance === 0n;
+  // Check if user has no assets at all
+  const hasNoAssets =
+    isConnected &&
+    tokens.every((addr) => (balances[addr] ?? 0n) === 0n);
 
   const handleDisconnect = () => {
     if (window.confirm("Disconnect wallet?")) {
@@ -784,16 +783,16 @@ export function SwapBox({
                 continue
               </button>
             </div>
-          ) : hasZeroPathUSD ? (
+          ) : hasNoAssets ? (
             <div className="quote-row">
-              <span>no pathUSD balance</span>
+              <span>no assets</span>
               <a
                 className="btn-link"
-                href={FAUCET_URL}
+                href="https://wallet.tempo.xyz/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                get faucet funds
+                top up
               </a>
             </div>
           ) : execBlockedBecause ? (

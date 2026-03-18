@@ -8,7 +8,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { parseUnits, type Address } from "viem";
+import { getAddress, isAddress, parseUnits, type Address } from "viem";
 import { useAccount, WagmiProvider } from "wagmi";
 import {
   AssetsBox,
@@ -21,6 +21,7 @@ import { NETWORK_BADGE, TOKEN_DECIMALS } from "./config";
 import { fetchBlockNumber, fetchQuote } from "./data";
 import "./style.css";
 import { getTokenState, loadTokens } from "./tokens";
+import { getNonRootTokens } from "./data";
 import type { QuoteState } from "./types";
 import { config } from "./wagmi";
 
@@ -35,6 +36,34 @@ const DEBUG_WALLET_ADDR: Address | null = null;
 const queryClient = new QueryClient();
 
 type Tab = "dex" | "assets";
+
+// -----------------------------------------------------------------------------
+// Hash routing: #/ = dex, #/assets = assets, #/assets/0x... = assets + token
+// -----------------------------------------------------------------------------
+
+function parseHash(): { tab: Tab; asset: Address | null } {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash.startsWith("assets")) {
+    const addr = hash.split("/")[1];
+    if (addr && isAddress(addr)) {
+      return { tab: "assets", asset: getAddress(addr) };
+    }
+    return { tab: "assets", asset: null };
+  }
+  return { tab: "dex", asset: null };
+}
+
+function setHash(tab: Tab, asset: Address | null) {
+  const hash =
+    tab === "assets"
+      ? asset
+        ? `#/assets/${asset}`
+        : "#/assets"
+      : "#/";
+  if (window.location.hash !== hash) {
+    window.history.pushState(null, "", hash);
+  }
+}
 
 // -----------------------------------------------------------------------------
 // App wrapper
@@ -65,8 +94,12 @@ function Page() {
   // Token loading state
   const [tokensReady, setTokensReady] = useState(false);
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<Tab>("dex");
+  // Tab + selected asset from hash
+  const initial = parseHash();
+  const [activeTab, setActiveTab] = useState<Tab>(initial.tab);
+  const [selectedAsset, setSelectedAsset] = useState<Address | null>(
+    initial.asset
+  );
 
   // Block number - the single source of truth for data coherence
   const [blockNumber, setBlockNumber] = useState<bigint | null>(null);
@@ -102,6 +135,52 @@ function Page() {
         setTokensReady(true);
       }
     });
+  }, []);
+
+  // -----------------------------------------------------------------------------
+  // Hash routing
+  // -----------------------------------------------------------------------------
+
+  // Listen for back/forward navigation
+  useEffect(() => {
+    const onPopState = () => {
+      const { tab, asset } = parseHash();
+      setActiveTab(tab);
+      if (asset) setSelectedAsset(asset);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // Set default selected asset once tokens are ready (if not set by hash)
+  useEffect(() => {
+    if (tokensReady && !selectedAsset) {
+      const nonRoot = getNonRootTokens();
+      if (nonRoot.length > 0) setSelectedAsset(nonRoot[0]);
+    }
+  }, [tokensReady, selectedAsset]);
+
+  // Tab change handler - sets state and hash
+  const handleTabChange = useCallback(
+    (tab: Tab) => {
+      setActiveTab(tab);
+      let asset = selectedAsset;
+      if (tab === "assets" && !asset) {
+        const nonRoot = getNonRootTokens();
+        if (nonRoot.length > 0) {
+          asset = nonRoot[0];
+          setSelectedAsset(asset);
+        }
+      }
+      setHash(tab, tab === "assets" ? asset : null);
+    },
+    [selectedAsset]
+  );
+
+  // Asset selection handler - sets state and hash
+  const handleSelectAsset = useCallback((addr: Address) => {
+    setSelectedAsset(addr);
+    setHash("assets", addr);
   }, []);
 
   // -----------------------------------------------------------------------------
@@ -216,7 +295,7 @@ function Page() {
     <main className="page">
       <header className="header">
         <h1>TEMPO</h1>
-        <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
         <div className="header-right">
           {blockNumber !== null && (
             <span className="block-number">#{blockNumber.toString()}</span>
@@ -247,7 +326,11 @@ function Page() {
       )}
 
       {activeTab === "assets" && blockNumber !== null && (
-        <AssetsBox blockNumber={blockNumber} />
+        <AssetsBox
+          blockNumber={blockNumber}
+          selectedToken={selectedAsset}
+          onSelectToken={handleSelectAsset}
+        />
       )}
     </main>
   );
