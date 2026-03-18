@@ -1,5 +1,4 @@
-// TabBar - navigation tabs (hidden for now)
-import React from "react";
+// TabBar - navigation tabs
 
 type Tab = "dex" | "assets";
 

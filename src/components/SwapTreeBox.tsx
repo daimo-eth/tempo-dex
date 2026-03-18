@@ -1,7 +1,7 @@
 // SwapTreeBox - displays the token tree with swap path highlighted
-import React from "react";
+import type { ReactNode } from "react";
 import type { Address } from "viem";
-import { formatUnits, getAddress } from "viem";
+import { formatUnits } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
 import { getSwapPath } from "../data";
 import { getTokenDepth } from "../swap";
@@ -37,7 +37,7 @@ interface SwapTreeBoxProps {
 
 export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
   const { tokenMeta } = getTokenState();
-  const rootToken = getAddress(ROOT_TOKEN);
+  const rootToken = ROOT_TOKEN;
 
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
@@ -56,7 +56,7 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
   }
 
   const renderTree = () => {
-    const lines: React.ReactNode[] = [];
+    const lines: ReactNode[] = [];
 
     // Determine if path goes through root
     const pathThroughRoot =
@@ -86,7 +86,7 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
       }
 
       // Amount and label for on-path nodes only
-      let rightContent: React.ReactNode = null;
+      let rightContent: ReactNode = null;
       if (isOnPath && !isNoOp) {
         const amt = amountByNode.get(addr);
         if (amt !== undefined) {

@@ -1,7 +1,7 @@
 // Centralized data fetching for Tempo DEX
 // All queries use a consistent block number for data coherence
 import type { Address } from "viem";
-import { createPublicClient, formatUnits, getAddress, http } from "viem";
+import { createPublicClient, formatUnits, http } from "viem";
 import {
   DEX_ABI,
   DEX_ADDRESS,
@@ -13,7 +13,7 @@ import { getTokenState } from "./tokens";
 import type { Quote } from "./types";
 
 // Normalized root token address for consistent comparisons
-const rootToken = getAddress(ROOT_TOKEN);
+const rootToken = ROOT_TOKEN;
 
 // -----------------------------------------------------------------------------
 // Client (single instance)

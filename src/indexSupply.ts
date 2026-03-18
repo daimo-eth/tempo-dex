@@ -19,7 +19,7 @@ const API_KEY =
   typeof __INDEX_SUPPLY_API_KEY__ !== "undefined"
     ? __INDEX_SUPPLY_API_KEY__
     : "";
-if (API_KEY) console.log("Using Index Supply API key:", API_KEY);
+if (API_KEY) console.log("Using Index Supply API key");
 
 /**
  * ERC-20 Transfer event signature for Index Supply queries.

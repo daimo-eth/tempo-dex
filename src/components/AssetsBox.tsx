@@ -1,7 +1,6 @@
 // AssetsBox - displays token tree with selected pair liquidity
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
-import { getAddress } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
 import {
   fetchPairLiquidity,
@@ -34,7 +33,7 @@ interface LiquidityState {
 export function AssetsBox({ blockNumber }: AssetsBoxProps) {
   const { tokens, tokenMeta } = getTokenState();
   const nonRootTokens = getNonRootTokens();
-  const rootToken = getAddress(ROOT_TOKEN);
+  const rootToken = ROOT_TOKEN;
   const [selectedToken, setSelectedToken] = useState<Address>(
     nonRootTokens[0] ?? tokens[1]
   );
@@ -100,7 +99,7 @@ export function AssetsBox({ blockNumber }: AssetsBoxProps) {
 
   // Build tree with pathUSD always on top, proper parent-child hierarchy
   const renderTree = () => {
-    const lines: React.ReactNode[] = [];
+    const lines: ReactNode[] = [];
     const selectedParent = getParent(selectedToken);
     const highlightedNodes = new Set<Address>([selectedToken]);
     if (selectedParent) highlightedNodes.add(selectedParent);

@@ -23,11 +23,3 @@ export interface QuoteState {
   error: string | null;
   data: Quote | null;
 }
-
-// Swap route (local path calculation)
-export interface SwapRoute {
-  inputPath: Address[];
-  outputPath: Address[];
-  highlightNodes: Set<Address>;
-  hops: number;
-}
