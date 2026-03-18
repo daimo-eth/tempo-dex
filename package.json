@@ -4,20 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\"",
-    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\"",
+    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
+    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
     "start": "serve public -l ${PORT:-8080}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.16",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "serve": "^14.2.4",
-    "tempo.ts": "^0.12.1",
+    "tempo.ts": "^0.14.2",
     "viem": "^2.44.0",
-    "wagmi": "^2.19.5"
+    "wagmi": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

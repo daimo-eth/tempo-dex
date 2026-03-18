@@ -1,5 +1,5 @@
-import { KeyManager, webAuthn } from "tempo.ts/wagmi";
 import { createConfig, http } from "wagmi";
+import { KeyManager, webAuthn } from "wagmi/tempo";
 import { injected } from "wagmi/connectors";
 import { tempoModerato } from "./config";
 

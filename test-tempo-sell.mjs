@@ -1,9 +1,9 @@
 // Test tempo.ts sell action directly
 import { createConfig, http } from '@wagmi/core';
+import { Actions } from '@wagmi/core/tempo';
 import { tempoModerato } from 'viem/chains';
 import { parseUnits } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { Actions } from 'tempo.ts/wagmi';
 
 const PRIVATE_KEY = '0xf22a74a1c6319e91c89b44cbff6e190d5993fc9cd305bd94b8bf407658786bd5';
 const account = privateKeyToAccount(PRIVATE_KEY);
