@@ -1,5 +1,5 @@
 // SwapBox - swap form, wallet connection, and execution
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
 import { useAccount, useConnect, useConnectors, useSwitchChain } from "wagmi";
@@ -74,8 +74,6 @@ export function SwapBox({
       },
     },
   });
-
-  const [showWalletOptions, setShowWalletOptions] = useState(false);
 
   // All transaction state (approve, swap, batched swap, pending flags,
   // success/error result, post-confirmation chain refresh) lives inside
@@ -182,20 +180,11 @@ export function SwapBox({
     return num.toFixed(4);
   };
 
-  // Wallet options - Tempo Wallet first, then specific injected wallets,
-  // hiding the generic Injected entry when a specific injected is present.
-  const filteredConnectors = useMemo(() => {
-    const hasSpecificInjected = connectors.some(
-      (c) => c.type === "injected" && c.name !== "Injected"
-    );
-    return connectors
-      .filter((c) => !(c.name === "Injected" && hasSpecificInjected))
-      .sort((a, b) => {
-        if (a.id === TEMPO_CONNECTOR_ID) return -1;
-        if (b.id === TEMPO_CONNECTOR_ID) return 1;
-        return 0;
-      });
-  }, [connectors]);
+  // The Tempo Wallet dialog connector is the only sign-in path we expose.
+  const tempoConnector = useMemo(
+    () => connectors.find((c) => c.id === TEMPO_CONNECTOR_ID),
+    [connectors]
+  );
 
   // Button state - allow actions if we have valid quote data, even during background refresh
   const hasValidQuote = quote.data && !quote.error;
@@ -235,62 +224,14 @@ export function SwapBox({
 
   // Render action button(s)
   const renderActionButtons = () => {
-    if (showWalletOptions) {
-      const tempoConnector = filteredConnectors.find(
-        (c) => c.id === TEMPO_CONNECTOR_ID
-      );
-      const otherConnectors = filteredConnectors.filter(
-        (c) => c.id !== TEMPO_CONNECTOR_ID
-      );
-
-      return (
-        <div className="wallet-options">
-          {tempoConnector && (
-            <div className="wallet-native">
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  // The Tempo Wallet dialog handles signup vs login internally
-                  connect({ connector: tempoConnector });
-                  setShowWalletOptions(false);
-                }}
-              >
-                CONNECT WITH TEMPO
-              </button>
-            </div>
-          )}
-          {otherConnectors.length > 0 && (
-            <>
-              <div className="wallet-options-title">or connect wallet</div>
-              {otherConnectors.map((connector) => (
-                <button
-                  key={connector.uid}
-                  className="btn-connector"
-                  onClick={() => {
-                    connect({ connector });
-                    setShowWalletOptions(false);
-                  }}
-                >
-                  {connector.name}
-                </button>
-              ))}
-            </>
-          )}
-          <button
-            className="btn-link"
-            onClick={() => setShowWalletOptions(false)}
-          >
-            cancel
-          </button>
-        </div>
-      );
-    }
-
     if (!isConnected) {
       return (
         <button
           className="btn-primary"
-          onClick={() => setShowWalletOptions(true)}
+          disabled={!tempoConnector}
+          onClick={() =>
+            tempoConnector && connect({ connector: tempoConnector })
+          }
         >
           CONNECT
         </button>
@@ -424,49 +365,54 @@ export function SwapBox({
           </div>
         </div>
 
-        <div className="quote">
-          {submit.result?.type === "error" ? (
-            <div className="quote-row">
-              <span className="error">{submit.result.message}</span>
-              <button className="btn-link" onClick={submit.reset}>
-                continue
-              </button>
-            </div>
-          ) : submit.result?.type === "success" ? (
-            <div className="quote-row">
-              <span className="success">
-                swapped {submit.result.fromAmount} {submit.result.fromSymbol} →{" "}
-                {submit.result.toAmount} {submit.result.toSymbol}
-              </span>
-              <button
-                className="btn-link"
-                onClick={() => {
-                  submit.reset();
-                  setAmount("");
-                  amountInputRef.current?.focus();
-                }}
-              >
-                continue
-              </button>
-            </div>
-          ) : hasNoAssets ? (
-            <div className="quote-row">
-              <span>no assets</span>
-              <a
-                className="btn-link"
-                href="https://wallet.tempo.xyz/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                top up
-              </a>
-            </div>
-          ) : execBlockedBecause ? (
-            <div>{execBlockedBecause}</div>
-          ) : null}
+        {/* Status line + action button as a .field combo, so the
+            label/control vertical rhythm matches the input/select fields
+            above. The status line is always rendered ("ready" by default)
+            so the panel never shifts. */}
+        <div className="field">
+          <div className="quote">
+            {submit.result?.type === "error" ? (
+              <div className="quote-row">
+                <span className="error">{submit.result.message}</span>
+                <button className="btn-link" onClick={submit.reset}>
+                  continue
+                </button>
+              </div>
+            ) : submit.result?.type === "success" ? (
+              <div className="quote-row">
+                <span className="success">
+                  swapped {submit.result.fromAmount} {submit.result.fromSymbol} →{" "}
+                  {submit.result.toAmount} {submit.result.toSymbol}
+                </span>
+                <button
+                  className="btn-link"
+                  onClick={() => {
+                    submit.reset();
+                    setAmount("");
+                    amountInputRef.current?.focus();
+                  }}
+                >
+                  continue
+                </button>
+              </div>
+            ) : hasNoAssets ? (
+              <div className="quote-row">
+                <span>no assets</span>
+                <a
+                  className="btn-link"
+                  href="https://wallet.tempo.xyz/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  top up
+                </a>
+              </div>
+            ) : (
+              <div>{execBlockedBecause ?? "ready"}</div>
+            )}
+          </div>
+          {renderActionButtons()}
         </div>
-
-        {renderActionButtons()}
       </div>
     </section>
   );
