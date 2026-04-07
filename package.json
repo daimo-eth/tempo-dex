@@ -4,28 +4,28 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
-    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__INDEX_SUPPLY_API_KEY__=\\\"${INDEX_SUPPLY_API_KEY:-}\\\" --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
+    "dev": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --sourcemap --watch=forever --serve=8080 --servedir=public --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@metamask/connect-evm --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
+    "build": "esbuild src/app.tsx --bundle --outfile=public/dist/bundle.js --minify --define:__TEMPO_NETWORK__=\\\"${TEMPO_NETWORK:-}\\\" --define:__TEMPO_RPC_URL__=\\\"${TEMPO_RPC_URL:-}\\\" --external:@coinbase/wallet-sdk --external:@metamask/sdk --external:@metamask/connect-evm --external:@safe-global/safe-apps-sdk --external:@safe-global/safe-apps-provider --external:@walletconnect/ethereum-provider --external:@base-org/account --external:porto --external:porto/internal",
     "start": "serve public -l ${PORT:-8080}",
     "typecheck": "tsc --noEmit",
     "test": "tsc --noEmit && node --import tsx --test src/*.test.ts"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.90.16",
-    "accounts": "^0.4.25",
+    "@tanstack/react-query": "^5.96.2",
+    "accounts": "^0.5.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "serve": "^14.2.4",
-    "viem": "^2.44.0",
-    "wagmi": "^3.5.0"
+    "viem": "^2.47.10",
+    "wagmi": "^3.6.1"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
+    "@types/node": "^25.5.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "esbuild": "^0.27.2",
+    "esbuild": "^0.28.0",
     "prettier": "^3.7.4",
     "tsx": "^4.21.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.9.3"
   }
 }

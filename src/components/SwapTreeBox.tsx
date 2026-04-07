@@ -1,16 +1,15 @@
 // SwapTreeBox - displays the token tree with swap path highlighted
 import type { ReactNode } from "react";
 import type { Address } from "viem";
-import { formatUnits } from "viem";
 import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
 import { getSwapPath } from "../data";
-import { getTokenDepth } from "../swap";
 import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
 import {
   BOX_CORNER,
   BOX_CORNER_UP,
   TREE_W_CHARS,
+  formatTokenAmount,
   padOrTruncate,
 } from "../utils";
 import { Label } from "./Text";
@@ -19,7 +18,10 @@ import { Label } from "./Text";
 // Constants
 // -----------------------------------------------------------------------------
 
-const AMOUNT_WIDTH = 10;
+// Right-aligned amount column width. 12 chars comfortably fits up to
+// "9,999,999.9999" (the formatTokenAmount helper uses comma thousands
+// separators and 4 fraction digits).
+const AMOUNT_WIDTH = 12;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -41,6 +43,17 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
 
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
+
+  // Depth from root (0 = root). Used to compute tree indentation per node.
+  const getDepth = (addr: Address) => {
+    let depth = 0;
+    let current: Address | null = getParent(addr);
+    while (current) {
+      depth++;
+      current = getParent(current);
+    }
+    return depth;
+  };
 
   // Get path - this is instant, doesn't depend on quote loading
   const path = getSwapPath(fromToken, toToken);
@@ -74,7 +87,7 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
 
     const addLine = (addr: Address, useUpwardL: boolean) => {
       const isOnPath = highlightNodes.has(addr);
-      const depth = getTokenDepth(addr, getParent);
+      const depth = getDepth(addr);
       const symbol = getSymbol(addr);
 
       // Build prefix: spaces for depth, then L connector
@@ -90,8 +103,10 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
       if (isOnPath && !isNoOp) {
         const amt = amountByNode.get(addr);
         if (amt !== undefined) {
-          const formatted = Number(formatUnits(amt, TOKEN_DECIMALS));
-          const amtStr = formatted.toFixed(2).padStart(AMOUNT_WIDTH);
+          const decimals = tokenMeta[addr]?.decimals ?? TOKEN_DECIMALS;
+          const amtStr = formatTokenAmount(amt, decimals).padStart(
+            AMOUNT_WIDTH
+          );
           let label = "";
           if (addr === inputNode) label = " INPUT";
           if (addr === outputNode && inputNode !== outputNode)
@@ -126,9 +141,7 @@ export function SwapTreeBox({ fromToken, toToken, quote }: SwapTreeBoxProps) {
       outputPath.forEach((addr) => addLine(addr, false));
     } else if (path.length > 1) {
       // Same-branch swap: all nodes above pathUSD, ordered by depth desc
-      const sorted = [...path].sort(
-        (a, b) => getTokenDepth(b, getParent) - getTokenDepth(a, getParent)
-      );
+      const sorted = [...path].sort((a, b) => getDepth(b) - getDepth(a));
       sorted.forEach((addr) => addLine(addr, true));
       // Show pathUSD greyed at bottom if not in path
       if (!highlightNodes.has(rootToken)) {

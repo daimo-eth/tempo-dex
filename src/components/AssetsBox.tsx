@@ -53,8 +53,6 @@ export function AssetsBox({
   const renderTree = () => {
     const lines: ReactNode[] = [];
     const selectedParent = getParent(selectedToken);
-    const highlightedNodes = new Set<Address>([selectedToken]);
-    if (selectedParent) highlightedNodes.add(selectedParent);
 
     // Build children map
     const childrenOf = new Map<Address | null, Address[]>();
@@ -67,8 +65,8 @@ export function AssetsBox({
 
     // DFS traversal starting from root
     const traverse = (addr: Address, depth: number) => {
-      const isHighlighted = highlightedNodes.has(addr);
       const isSelected = addr === selectedToken;
+      const isParent = addr === selectedParent;
       const isRoot = addr === rootToken;
       const symbol = getSymbol(addr);
 
@@ -81,10 +79,18 @@ export function AssetsBox({
 
       const leftCol = padOrTruncate(prefix + symbol, TREE_W_CHARS);
 
+      // Three mutually exclusive states; .parent gets a subtler highlight
+      // than .selected via the --c-text-soft color token.
+      const stateClass = isSelected
+        ? "selected"
+        : isParent
+          ? "parent"
+          : "off-path";
+
       lines.push(
         <div
           key={addr}
-          className={`tree-line ${isHighlighted ? "on-path" : "off-path"} ${isSelected ? "selected" : ""} ${!isRoot ? "clickable" : ""}`}
+          className={`tree-line ${stateClass}${isRoot ? "" : " clickable"}`}
           onClick={() => handleSelectToken(addr)}
         >
           <span className="left">{leftCol}</span>
@@ -102,55 +108,51 @@ export function AssetsBox({
     return lines;
   };
 
-  // Render liquidity info
-  const renderLiquidity = () => {
+  // Render the orderbook body (everything inside the orderbook panel
+  // except its panel-title). The wrapping <section> + title live in the
+  // main return below so the asset tree and orderbook are two separate
+  // panels — matching the per-section panel pattern from the DEX page.
+  const renderOrderbookBody = (): ReactNode => {
     const childSymbol = getSymbol(selectedToken);
     const parentSymbol = getSymbol(getParent(selectedToken) ?? rootToken);
     const pairName = `${childSymbol}-${parentSymbol}`;
 
-    // Show loading only if no existing data (placeholderData prevents this
-    // from triggering on block ticks — only on token change).
-    if (isLoading && !liquidityData && !liquidityError) {
-      return (
-        <div className="liquidity">
-          <div className="liquidity-title"># {pairName}</div>
-          <div className="liquidity-loading">loading...</div>
-        </div>
-      );
-    }
-
-    if (liquidityError && !liquidityData) {
-      return (
-        <div className="liquidity">
-          <div className="liquidity-title"># {pairName}</div>
-          <div className="liquidity-error">{liquidityError}</div>
-        </div>
-      );
-    }
-
-    if (!liquidityData) {
-      return null;
-    }
-
-    const { midPrice, tickRows: allRows } = liquidityData;
-
-    // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
-    const tickRows = allRows.filter(
-      (r) => r.bidLiquidity > 0n || r.askLiquidity > 0n
-    );
-
-    // Format liquidity
+    // Format liquidity (bids in child token w/ price conversion, asks in parent)
     const formatLiq = (liq: bigint, price: number, isBid: boolean) => {
       if (liq === 0n) return "";
-      // Bids are in child token (need price conversion), asks are in parent token
       const val = isBid
         ? (Number(liq) / 10 ** TOKEN_DECIMALS) * price
         : Number(liq) / 10 ** TOKEN_DECIMALS;
       return val.toFixed(0);
     };
 
+    // Show loading only if no existing data (placeholderData prevents this
+    // from triggering on block ticks — only on token change).
+    if (isLoading && !liquidityData && !liquidityError) {
+      return (
+        <>
+          <div className="liquidity-title"># {pairName}</div>
+          <div className="liquidity-loading">loading...</div>
+        </>
+      );
+    }
+    if (liquidityError && !liquidityData) {
+      return (
+        <>
+          <div className="liquidity-title"># {pairName}</div>
+          <div className="liquidity-error">{liquidityError}</div>
+        </>
+      );
+    }
+    if (!liquidityData) return null;
+
+    const { midPrice, tickRows: allRows } = liquidityData;
+    // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
+    const tickRows = allRows.filter(
+      (r) => r.bidLiquidity > 0n || r.askLiquidity > 0n
+    );
     return (
-      <div className="liquidity">
+      <>
         <div className="liquidity-title">
           # 1 {childSymbol} = {midPrice.toFixed(5)} {parentSymbol}
         </div>
@@ -174,15 +176,20 @@ export function AssetsBox({
             </tbody>
           </table>
         )}
-      </div>
+      </>
     );
   };
 
   return (
-    <section className="panel">
-      <div className="panel-title">// asset tree</div>
-      <div className="tree">{renderTree()}</div>
-      {renderLiquidity()}
-    </section>
+    <>
+      <section className="panel">
+        <div className="panel-title">// asset tree</div>
+        <div className="tree">{renderTree()}</div>
+      </section>
+      <section className="panel">
+        <div className="panel-title">// orderbook</div>
+        {renderOrderbookBody()}
+      </section>
+    </>
   );
 }

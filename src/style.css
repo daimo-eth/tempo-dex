@@ -6,9 +6,52 @@
   padding: 0;
 }
 
+/* -----------------------------------------------------------------------------
+ * Theme tokens. Light mode is the original palette; dark mode follows
+ * `prefers-color-scheme` automatically. `color-scheme: light dark` lets the
+ * browser pick the right defaults for scrollbars, form controls, and focus
+ * rings without us styling each one. Brand colors (greens / red / button
+ * text white) stay as literals throughout — they read fine on both backgrounds.
+ * --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light dark;
+  --c-text:        #1a1a2e;
+  --c-text-soft:   #4a5060;
+  --c-muted:       #6b7280;
+  --c-faint:       #9ca3af;
+  --c-bg-page:     #e8eef4;
+  --c-bg-panel:    #f4f7fa;
+  --c-bg-input:    #fff;
+  --c-border-soft: #c5d0db;
+  --c-link:        #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --c-text:        #e8eef4;
+    --c-text-soft:   #c5cbd6;
+    --c-muted:       #9ca3af;
+    --c-faint:       #6b7280;
+    --c-bg-page:     #0f1117;
+    --c-bg-panel:    #181b25;
+    --c-bg-input:    #0c0e16;
+    --c-border-soft: #2a2f3d;
+    --c-link:        #60a5fa;
+  }
+}
+
 html,
 body {
   height: 100%;
+}
+
+html {
+  /* Reserve the scrollbar gutter even when content fits, so the page
+   * doesn't shift sideways the moment it grows past the viewport. On
+   * macOS with the default auto-hide trackpad scrollbar this is a no-op
+   * (the gutter is zero-width); on systems where scrollbars take space
+   * it pins the layout. Replaces the deprecated `overflow: overlay`. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -16,8 +59,8 @@ body {
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
   font-size: 13px;
-  color: #1a1a2e;
-  background: #e8eef4;
+  color: var(--c-text);
+  background: var(--c-bg-page);
   line-height: 1.5;
 }
 
@@ -31,7 +74,7 @@ a {
 }
 
 .page {
-  max-width: 640px;
+  max-width: 700px;
   margin: 0 auto;
   padding: 48px 24px 64px;
 }
@@ -40,9 +83,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 32px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #1a1a2e;
+  margin-bottom: 16px;
 }
 
 .header h1 {
@@ -64,8 +105,8 @@ a {
 
 .badge {
   font-size: 11px;
-  color: #1a1a2e;
-  border: 1px solid #1a1a2e;
+  color: var(--c-text);
+  border: 1px solid var(--c-text);
   padding: 2px 6px;
 }
 
@@ -81,7 +122,7 @@ a {
   font-family: inherit;
   font-weight: 400;
   letter-spacing: 0.05em;
-  color: #6b7280;
+  color: var(--c-muted);
   background: none;
   border: none;
   padding: 0;
@@ -91,27 +132,45 @@ a {
 
 .tab:hover {
   text-decoration: underline;
-  color: #1a1a2e;
+  color: var(--c-text);
 }
 
 .tab.active {
-  color: #1a1a2e;
+  color: var(--c-text);
   font-weight: 600;
   text-decoration: underline;
 }
 
 .panel {
-  border: 1px solid #1a1a2e;
+  border: 1px solid var(--c-text);
   padding: 16px;
   margin-bottom: 16px;
-  background: #f4f7fa;
+  background: var(--c-bg-panel);
 }
 
 .panel-title {
+  /* Flex so panels can put a right-aligned action (e.g. "show wallet"
+   * in HistoryBox) next to the title text. Single-text panel titles
+   * still left-align fine because the lone flex item has no sibling
+   * to space against. The 8px right padding matches the table's
+   * right-cell padding (`.history-table td { padding: ... 8px ... 0 }`),
+   * so an inline action button aligns horizontally with both the
+   * disconnect button below it and the rightmost table-cell text. */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-right: 8px;
   font-size: 11px;
-  color: #6b7280;
+  color: var(--c-muted);
   margin-bottom: 12px;
   text-transform: lowercase;
+}
+
+/* Inline action button next to a panel title. Same bold-monospace
+ * styling as the disconnect button inside HistoryBox's account row. */
+.panel-title .btn-link {
+  padding: 0;
+  font-weight: 600;
 }
 
 .tree {
@@ -124,32 +183,32 @@ a {
 }
 
 .tree-line .left {
-  color: #9ca3af;
+  color: var(--c-faint);
 }
 
 .tree-line .right {
-  color: #9ca3af;
+  color: var(--c-faint);
 }
 
 .tree-line.on-path .left {
-  color: #1a1a2e;
+  color: var(--c-text);
   font-weight: 600;
 }
 
 .tree-line.on-path .right {
-  color: #1a1a2e;
+  color: var(--c-text);
 }
 
 .tree-line.off-path .left {
-  color: #9ca3af;
+  color: var(--c-faint);
 }
 
 .tree-line.off-path .right {
-  color: #9ca3af;
+  color: var(--c-faint);
 }
 
 .tree-line .path-prefix {
-  color: #1a1a2e;
+  color: var(--c-text);
   font-weight: 600;
 }
 
@@ -158,30 +217,36 @@ a {
 }
 
 .tree-line.clickable:hover .left {
-  color: #1a1a2e;
+  color: var(--c-text);
 }
 
+/* AssetsBox uses three mutually exclusive states for tree rows:
+ *   .selected — the currently-active token (full-strength text, bold)
+ *   .parent   — its direct parent in the tree (subtler --c-text-soft)
+ *   .off-path — everything else (faintest)
+ * SwapTreeBox uses .on-path for any node along the swap path (rules above).
+ */
+.tree-line.selected .left,
 .tree-line.selected .right {
-  color: #1a1a2e;
+  color: var(--c-text);
   font-weight: 600;
 }
 
-.liquidity {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid #c5d0db;
+.tree-line.parent .left,
+.tree-line.parent .right {
+  color: var(--c-text-soft);
 }
 
 .liquidity-title {
   font-size: 13px;
   font-weight: 600;
-  color: #1a1a2e;
+  color: var(--c-text);
   margin-bottom: 6px;
 }
 
 .liquidity-stats {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--c-muted);
   display: flex;
   gap: 16px;
 }
@@ -189,7 +254,7 @@ a {
 .liquidity-loading,
 .liquidity-error {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--c-muted);
 }
 
 .liquidity-error {
@@ -198,6 +263,9 @@ a {
 
 .tick-table {
   width: 100%;
+  /* Fixed layout — equal-width columns distributed across the table
+   * width regardless of cell content. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
   margin-top: 8px;
@@ -211,25 +279,25 @@ a {
 
 .tick-table th {
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-muted);
   font-size: 11px;
 }
 
 .tick-table td {
-  color: #1a1a2e;
+  color: var(--c-text);
 }
 
 /* Shared text styles */
 .text-label {
-  color: #6b7280;
+  color: var(--c-muted);
 }
 
 .text-value {
-  color: #1a1a2e;
+  color: var(--c-text);
 }
 
 .text-muted {
-  color: #9ca3af;
+  color: var(--c-faint);
 }
 
 .swap {
@@ -244,28 +312,28 @@ a {
 
 label {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--c-muted);
 }
 
 select,
 input {
   width: 100%;
-  border: 1px solid #1a1a2e;
+  border: 1px solid var(--c-text);
   padding: 8px 10px;
   font-size: 13px;
   font-family: inherit;
-  background: #fff;
+  background: var(--c-bg-input);
 }
 
 select:focus,
 input:focus {
   outline: none;
-  background: #fff;
+  background: var(--c-bg-input);
 }
 
 input:disabled {
-  background: #e8eef4;
-  color: #1a1a2e;
+  background: var(--c-bg-page);
+  color: var(--c-text);
   cursor: default;
 }
 
@@ -275,13 +343,53 @@ input:disabled {
   gap: 12px;
 }
 
+/* Amount input with an inline MAX label on the right edge. The wrapper
+ * is `position: relative` so the button can be absolutely positioned
+ * inside the input's bounds; the input itself gets right-padding so
+ * its value doesn't slide under the button. */
+.input-with-max {
+  position: relative;
+}
+
+.input-with-max input {
+  padding-right: 44px;
+}
+
+.input-max {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--c-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.input-max:hover {
+  color: var(--c-text);
+}
+
 .quote {
-  font-size: 12px;
-  color: #6b7280;
-  padding: 8px 0;
+  /* Match the field labels above so the status-line + swap-button combo
+   * has the same vertical rhythm as the label + input combos. */
+  font-size: 11px;
+  color: var(--c-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Drop the global .btn-link padding for inline buttons inside the status
+ * row (continue / top up) so error/success states stay the same height as
+ * the plain "ready" state — no layout shift on transition. */
+.quote .btn-link {
+  padding: 0;
 }
 
 .quote .error {
@@ -324,9 +432,19 @@ input:disabled {
 }
 
 .btn-primary:disabled {
-  background: #9ca3af;
-  border-color: #9ca3af;
+  background: var(--c-faint);
+  border-color: var(--c-faint);
   cursor: not-allowed;
+}
+
+/* Busy state — overrides the disabled grey-out so the button stays green
+ * while a swap or approval is in flight (or briefly in the post-success
+ * window before the auto-revert clears the form). Selector specificity
+ * (0,2,1) beats `.btn-primary:disabled` (0,1,1). */
+.btn-primary.is-busy:disabled {
+  background: #2a2;
+  border-color: #2a2;
+  cursor: wait;
 }
 
 .action-section {
@@ -337,7 +455,7 @@ input:disabled {
 .btn-link {
   font-size: 11px;
   font-family: inherit;
-  color: #6b7280;
+  color: var(--c-muted);
   background: none;
   border: none;
   cursor: pointer;
@@ -346,15 +464,8 @@ input:disabled {
 }
 
 .btn-link:hover {
-  color: #1a1a2e;
+  color: var(--c-text);
   text-decoration: underline;
-}
-
-.account-bar {
-  display: flex;
-  justify-content: space-between;
-  margin-top: -24px;
-  margin-bottom: 24px;
 }
 
 .wallet-options {
@@ -364,7 +475,7 @@ input:disabled {
 
 .wallet-options-title {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--c-muted);
   margin-bottom: 4px;
 }
 
@@ -385,15 +496,15 @@ input:disabled {
   font-family: inherit;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: #1a1a2e;
-  background: #fff;
-  border: 1px solid #1a1a2e;
+  color: var(--c-text);
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-text);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .btn-secondary:hover {
-  background: #e8eef4;
+  background: var(--c-bg-page);
 }
 
 .btn-connector {
@@ -401,15 +512,15 @@ input:disabled {
   padding: 10px;
   font-size: 12px;
   font-family: inherit;
-  color: #1a1a2e;
-  background: #fff;
-  border: 1px solid #1a1a2e;
+  color: var(--c-text);
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-text);
   cursor: pointer;
   text-align: left;
 }
 
 .btn-connector:hover {
-  background: #e8eef4;
+  background: var(--c-bg-page);
 }
 
 .btn-split {
@@ -423,9 +534,9 @@ input:disabled {
   padding: 10px;
   font-size: 12px;
   font-family: inherit;
-  color: #1a1a2e;
-  background: #fff;
-  border: 1px solid #1a1a2e;
+  color: var(--c-text);
+  background: var(--c-bg-input);
+  border: 1px solid var(--c-text);
   cursor: pointer;
 }
 
@@ -435,17 +546,34 @@ input:disabled {
 
 .btn-split-left:hover,
 .btn-split-right:hover {
-  background: #e8eef4;
+  background: var(--c-bg-page);
 }
 
 .history {
   font-size: 12px;
 }
 
+.history-account {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  /* Match the table's right-column 8px cell padding so the disconnect
+   * button aligns with the rightmost cell's right edge. */
+  padding-right: 8px;
+}
+
+/* Override .btn-link's padding so the address aligns flush with the
+ * table's left edge, and bold to match the table headers' typography. */
+.history-account .btn-link {
+  padding: 0;
+  font-weight: 600;
+}
+
 .history-loading,
 .history-empty,
 .history-error {
-  color: #6b7280;
+  color: var(--c-muted);
   padding: 8px 0;
 }
 
@@ -455,6 +583,11 @@ input:disabled {
 
 .history-table {
   width: 100%;
+  /* Fixed layout — with no explicit column widths, the browser
+   * distributes the table width equally across all columns and ignores
+   * row content for sizing, so the columns don't jiggle when amounts
+   * grow or shrink across refetches. */
+  table-layout: fixed;
   border-collapse: collapse;
 }
 
@@ -462,21 +595,38 @@ input:disabled {
 .history-table td {
   text-align: left;
   padding: 6px 8px 6px 0;
-  border-bottom: 1px solid #c5d0db;
+  border-bottom: 1px solid var(--c-border-soft);
+  /* Allow long unbroken values (like a hash) to wrap inside their
+   * fixed-width cell rather than overflowing. */
+  word-break: break-word;
 }
 
 .history-table th {
   font-weight: 600;
-  color: #6b7280;
+  color: var(--c-muted);
   font-size: 11px;
 }
 
 .history-table td {
-  color: #1a1a2e;
+  color: var(--c-text);
+}
+
+/* Rows flagged with .history-row-new flash brand green for one second.
+ * The class is added by HistoryBox only for tx hashes the user hasn't
+ * seen yet this session, so the flash survives refetches AND tab-switch
+ * remounts. The keyframe animates the alpha channel of the same green so
+ * the fade is a smooth single-color desaturation. */
+@keyframes history-row-flash {
+  from { background-color: rgba(34, 170, 34, 0.35); }
+  to   { background-color: rgba(34, 170, 34, 0); }
+}
+
+.history-table tbody tr.history-row-new {
+  animation: history-row-flash 1s ease-out;
 }
 
 .history-table a {
-  color: #2563eb;
+  color: var(--c-link);
 }
 
 .history-table a:hover {
@@ -490,5 +640,12 @@ input:disabled {
 
   .row {
     grid-template-columns: 1fr;
+  }
+
+  /* On narrow screens the in/out cells don't have room for "100.00 USDC.e"
+   * on a single line — break the symbol onto its own line so the table
+   * stays inside its panel. */
+  .history-table .amount-symbol {
+    display: block;
   }
 }

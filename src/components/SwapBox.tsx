@@ -1,18 +1,18 @@
 // SwapBox - swap form, wallet connection, and execution
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
 import { useAccount, useConnect, useConnectors, useSwitchChain } from "wagmi";
 import {
-  useAllowance,
   useBalances,
+  useMaxSwappable,
   useSubmitSwap,
   type SwapParams,
 } from "../chain";
 import { chain, TOKEN_DECIMALS } from "../config";
 import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
-import { TEMPO_CONNECTOR_ID } from "../wagmi";
+import { formatTokenAmount } from "../utils";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -75,11 +75,8 @@ export function SwapBox({
     },
   });
 
-  const [showWalletOptions, setShowWalletOptions] = useState(false);
-
-  // All transaction state (approve, swap, batched swap, pending flags,
-  // success/error result, post-confirmation chain refresh) lives inside
-  // useSubmitSwap.
+  // All transaction state (pending, success/error result, post-confirmation
+  // chain refresh) lives inside useSubmitSwap.
   const submit = useSubmitSwap();
 
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
@@ -97,18 +94,18 @@ export function SwapBox({
     return parseUnits(amount, TOKEN_DECIMALS);
   }, [amount]);
 
-  // Balances and allowance — both keyed on the chain head, so they cascade
-  // automatically whenever the head ticks or is fast-forwarded after a swap.
+  // Balances — keyed on the chain head, cascade-refetched when the head
+  // ticks or is fast-forwarded after a swap.
   const { balances } = useBalances(address);
-  const { data: allowance } = useAllowance(fromToken, address);
-
-  const currentAllowance = (allowance as bigint) ?? 0n;
-  const needsApproval = amountIn > 0n && currentAllowance < amountIn;
 
   // Quote info
   const amountOut = quote.data?.amountOut ?? 0n;
-  const amountOutFormatted = Number(formatUnits(amountOut, TOKEN_DECIMALS));
-  const rate = quote.data?.rate ?? 0;
+
+  // Per-token decimal lookups (with TOKEN_DECIMALS as the fallback for
+  // tokens that aren't in the loaded tokenlist) — used by every display
+  // formatter in this component.
+  const fromDecimals = tokenMeta[fromToken]?.decimals ?? TOKEN_DECIMALS;
+  const toDecimals = tokenMeta[toToken]?.decimals ?? TOKEN_DECIMALS;
 
   // Slippage
   const minAmountOut =
@@ -119,31 +116,65 @@ export function SwapBox({
 
   // Build the SwapParams payload from current form/quote state. Captured at
   // call time so the success message reflects what was actually submitted.
-  const buildSwapParams = useCallback((): SwapParams => {
-    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
-    return {
+  const buildSwapParams = useCallback(
+    (): SwapParams => ({
       fromToken,
       toToken,
       amountIn,
       minAmountOut,
-      fromAmount: inputFormatted.toFixed(2),
+      fromAmount: formatTokenAmount(amountIn, fromDecimals),
       fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
-      toAmount: amountOutFormatted.toFixed(2),
+      toAmount: formatTokenAmount(amountOut, toDecimals),
       toSymbol: tokenMeta[toToken]?.symbol ?? "",
-    };
-  }, [
-    fromToken,
-    toToken,
-    amountIn,
-    minAmountOut,
-    amountOutFormatted,
-    tokenMeta,
-  ]);
+    }),
+    [
+      fromToken,
+      toToken,
+      amountIn,
+      amountOut,
+      minAmountOut,
+      fromDecimals,
+      toDecimals,
+      tokenMeta,
+    ]
+  );
 
-  const handleApprove = () => submit.approve(fromToken);
-  const handleSwap = () => submit.swap(buildSwapParams());
-  const handleBatchedSwap = () =>
-    void submit.batchedSwap(buildSwapParams(), needsApproval);
+  const handleSwap = () => void submit.submit(buildSwapParams());
+
+  // Initial autofocus + select-all so the user can start typing a new
+  // amount the moment the page is interactive. The default value is
+  // already populated, so select() highlights it for instant replacement.
+  useEffect(() => {
+    amountInputRef.current?.focus();
+    amountInputRef.current?.select();
+  }, []);
+
+  // After a successful swap: clear the input immediately so the form is
+  // ready for the next entry, then hold the green "SUCCESS" button state
+  // for 1 second before resetting the result + restoring focus + select.
+  // After the result resets the status line falls through to "enter
+  // amount" and the button reverts to its grey-disabled "SWAP" default.
+  useEffect(() => {
+    if (submit.result?.type !== "success") return;
+    setAmount("");
+    const t = setTimeout(() => {
+      submit.reset();
+      amountInputRef.current?.focus();
+      amountInputRef.current?.select();
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [submit.result, submit.reset, setAmount]);
+
+  // Button state. `swapBusy` covers both pending and success and triggers
+  // the .is-busy CSS override so the button stays green while disabled.
+  // Otherwise the standard :disabled grey styling applies.
+  const swapSuccess = submit.result?.type === "success";
+  const swapBusy = submit.isPending || swapSuccess;
+  const swapLabel = submit.isPending
+    ? "SWAPPING..."
+    : swapSuccess
+      ? "SUCCESS"
+      : "SWAP";
 
   // Token lists for dropdowns
   const tokensByBalance = useMemo(() => {
@@ -162,64 +193,33 @@ export function SwapBox({
     );
   }, [tokenMeta]);
 
-  // Balance check
+  // Balance check. `maxSwappable = balance - estimatedGasReserve`, so the
+  // user can't enter an amount that would leave no headroom for gas. Both
+  // the MAX button and this check read the same value.
   const fromBalance = balances[fromToken] ?? 0n;
-  const fromBalanceFormatted = Number(formatUnits(fromBalance, TOKEN_DECIMALS));
-  const parsedAmount = Number(amount) || 0;
-  const insufficientBalance =
-    isConnected && parsedAmount > fromBalanceFormatted;
+  const { maxSwappable } = useMaxSwappable(
+    fromToken,
+    toToken,
+    address,
+    fromBalance
+  );
+  const insufficientBalance = isConnected && amountIn > maxSwappable;
 
   // Check if user has no assets at all
   const hasNoAssets =
     isConnected &&
     tokens.every((addr) => (balances[addr] ?? 0n) === 0n);
 
-  const formatBalance = (bal: bigint) => {
-    const num = Number(formatUnits(bal, TOKEN_DECIMALS));
-    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
-    if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
-    if (num >= 1) return num.toFixed(2);
-    return num.toFixed(4);
-  };
 
-  // Wallet options - Tempo Wallet first, then specific injected wallets,
-  // hiding the generic Injected entry when a specific injected is present.
-  const filteredConnectors = useMemo(() => {
-    const hasSpecificInjected = connectors.some(
-      (c) => c.type === "injected" && c.name !== "Injected"
-    );
-    return connectors
-      .filter((c) => !(c.name === "Injected" && hasSpecificInjected))
-      .sort((a, b) => {
-        if (a.id === TEMPO_CONNECTOR_ID) return -1;
-        if (b.id === TEMPO_CONNECTOR_ID) return 1;
-        return 0;
-      });
-  }, [connectors]);
+  // Only one connector is wired in this app (the Tempo Wallet dialog).
+  const tempoConnector = connectors[0];
 
-  // Button state - allow actions if we have valid quote data, even during background refresh
+  // Allow actions if we have valid quote data, even during background refresh.
   const hasValidQuote = quote.data && !quote.error;
-
-  const canApprove =
-    !isNoOp &&
-    !insufficientBalance &&
-    !submit.isApprovePending &&
-    amountIn > 0n &&
-    hasValidQuote;
-
   const canSwap =
     !isNoOp &&
     !insufficientBalance &&
-    !submit.isSwapPending &&
-    !needsApproval &&
-    amountOut > 0n &&
-    hasValidQuote;
-
-  // Batched swap can proceed even if needsApproval (it will include approve in the batch)
-  const canBatchedSwap =
-    !isNoOp &&
-    !insufficientBalance &&
-    !submit.isBatchedPending &&
+    !submit.isPending &&
     amountOut > 0n &&
     hasValidQuote;
 
@@ -229,68 +229,20 @@ export function SwapBox({
     if (insufficientBalance) return "insufficient balance";
     if (quote.error) return "insufficient liquidity";
     if (quote.loading && !quote.data) return "loading...";
-    if (parsedAmount <= 0) return "enter amount";
+    if (amountIn === 0n) return "enter amount";
     return null;
   })();
 
-  // Render action button(s)
+  // Render action button
   const renderActionButtons = () => {
-    if (showWalletOptions) {
-      const tempoConnector = filteredConnectors.find(
-        (c) => c.id === TEMPO_CONNECTOR_ID
-      );
-      const otherConnectors = filteredConnectors.filter(
-        (c) => c.id !== TEMPO_CONNECTOR_ID
-      );
-
-      return (
-        <div className="wallet-options">
-          {tempoConnector && (
-            <div className="wallet-native">
-              <button
-                className="btn-primary"
-                onClick={() => {
-                  // The Tempo Wallet dialog handles signup vs login internally
-                  connect({ connector: tempoConnector });
-                  setShowWalletOptions(false);
-                }}
-              >
-                CONNECT WITH TEMPO
-              </button>
-            </div>
-          )}
-          {otherConnectors.length > 0 && (
-            <>
-              <div className="wallet-options-title">or connect wallet</div>
-              {otherConnectors.map((connector) => (
-                <button
-                  key={connector.uid}
-                  className="btn-connector"
-                  onClick={() => {
-                    connect({ connector });
-                    setShowWalletOptions(false);
-                  }}
-                >
-                  {connector.name}
-                </button>
-              ))}
-            </>
-          )}
-          <button
-            className="btn-link"
-            onClick={() => setShowWalletOptions(false)}
-          >
-            cancel
-          </button>
-        </div>
-      );
-    }
-
     if (!isConnected) {
       return (
         <button
           className="btn-primary"
-          onClick={() => setShowWalletOptions(true)}
+          disabled={!tempoConnector}
+          onClick={() =>
+            tempoConnector && connect({ connector: tempoConnector })
+          }
         >
           CONNECT
         </button>
@@ -311,42 +263,15 @@ export function SwapBox({
       );
     }
 
-    // Connected and on correct chain
-    // Use batched flow if wallet supports it, otherwise traditional approve → swap
-    if (submit.supportsBatchedCalls) {
-      return (
-        <div className="action-section">
-          <button
-            className="btn-primary"
-            disabled={!canBatchedSwap || !!submit.result}
-            onClick={handleBatchedSwap}
-          >
-            {submit.isBatchedPending ? "SWAPPING..." : "SWAP"}
-          </button>
-        </div>
-      );
-    }
-
-    // Traditional approve → swap flow
     return (
       <div className="action-section">
-        {needsApproval ? (
-          <button
-            className="btn-primary"
-            disabled={!canApprove || !!submit.result}
-            onClick={handleApprove}
-          >
-            {submit.isApprovePending ? "APPROVING..." : "APPROVE"}
-          </button>
-        ) : (
-          <button
-            className="btn-primary"
-            disabled={!canSwap || !!submit.result}
-            onClick={handleSwap}
-          >
-            {submit.isSwapPending ? "SWAPPING..." : "SWAP"}
-          </button>
-        )}
+        <button
+          className={`btn-primary${swapBusy ? " is-busy" : ""}`}
+          disabled={!canSwap || !!submit.result}
+          onClick={handleSwap}
+        >
+          {swapLabel}
+        </button>
       </div>
     );
   };
@@ -370,7 +295,7 @@ export function SwapBox({
                 <option key={t.address} value={t.address}>
                   {t.symbol}
                   {isConnected
-                    ? ` (${formatBalance(balances[t.address] ?? 0n)})`
+                    ? ` (${formatTokenAmount(balances[t.address] ?? 0n, t.decimals)})`
                     : ""}
                 </option>
               ))}
@@ -398,13 +323,26 @@ export function SwapBox({
         <div className="row">
           <div className="field">
             <label htmlFor="amount">amount</label>
-            <input
-              ref={amountInputRef}
-              id="amount"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <div className="input-with-max">
+              <input
+                ref={amountInputRef}
+                id="amount"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+              {isConnected && maxSwappable > 0n && (
+                <button
+                  type="button"
+                  className="input-max"
+                  onClick={() =>
+                    setAmount(formatUnits(maxSwappable, fromDecimals))
+                  }
+                >
+                  MAX
+                </button>
+              )}
+            </div>
           </div>
           <div className="field">
             <label htmlFor="output">output</label>
@@ -412,61 +350,62 @@ export function SwapBox({
               id="output"
               disabled
               value={
-                quote.loading && !quote.data
-                  ? ""
-                  : quote.error
-                    ? ""
-                    : amountOut > 0n
-                      ? amountOutFormatted.toFixed(2)
-                      : ""
+                amountIn > 0n && amountOut > 0n
+                  ? formatTokenAmount(amountOut, toDecimals)
+                  : ""
               }
             />
           </div>
         </div>
 
-        <div className="quote">
-          {submit.result?.type === "error" ? (
-            <div className="quote-row">
-              <span className="error">{submit.result.message}</span>
-              <button className="btn-link" onClick={submit.reset}>
-                continue
-              </button>
-            </div>
-          ) : submit.result?.type === "success" ? (
-            <div className="quote-row">
-              <span className="success">
-                swapped {submit.result.fromAmount} {submit.result.fromSymbol} →{" "}
-                {submit.result.toAmount} {submit.result.toSymbol}
-              </span>
-              <button
-                className="btn-link"
-                onClick={() => {
-                  submit.reset();
-                  setAmount("");
-                  amountInputRef.current?.focus();
-                }}
-              >
-                continue
-              </button>
-            </div>
-          ) : hasNoAssets ? (
-            <div className="quote-row">
-              <span>no assets</span>
-              <a
-                className="btn-link"
-                href="https://wallet.tempo.xyz/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                top up
-              </a>
-            </div>
-          ) : execBlockedBecause ? (
-            <div>{execBlockedBecause}</div>
-          ) : null}
+        {/* Status line + action button as a .field combo, so the
+            label/control vertical rhythm matches the input/select fields
+            above. The status line is always rendered ("ready" by default)
+            so the panel never shifts. */}
+        <div className="field">
+          <div className="quote">
+            {submit.result?.type === "error" ? (
+              <div className="quote-row">
+                <span className="error">{submit.result.message}</span>
+                <button className="btn-link" onClick={submit.reset}>
+                  continue
+                </button>
+              </div>
+            ) : submit.result?.type === "success" ? (
+              <div className="quote-row">
+                <span className="success">
+                  swapped {submit.result.fromAmount} {submit.result.fromSymbol} →{" "}
+                  {submit.result.toAmount} {submit.result.toSymbol}
+                </span>
+                <button
+                  className="btn-link"
+                  onClick={() => {
+                    submit.reset();
+                    setAmount("");
+                    amountInputRef.current?.focus();
+                  }}
+                >
+                  continue
+                </button>
+              </div>
+            ) : hasNoAssets ? (
+              <div className="quote-row">
+                <span>no assets</span>
+                <a
+                  className="btn-link"
+                  href="https://wallet.tempo.xyz/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  top up
+                </a>
+              </div>
+            ) : (
+              <div>{execBlockedBecause ?? "ready"}</div>
+            )}
+          </div>
+          {renderActionButtons()}
         </div>
-
-        {renderActionButtons()}
       </div>
     </section>
   );

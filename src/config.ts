@@ -73,6 +73,12 @@ export const ROOT_TOKEN = getAddress(Addresses.pathUsd);
 // Token decimals (all Tempo stablecoins use 6)
 export const TOKEN_DECIMALS = 6;
 
+// Empirically measured block time on rpc.presto.tempo.xyz: ~500ms/block
+// (≈2 blocks/sec). The viem chain definition reports `blockTime: 1000`,
+// which is wrong by ~2x — this constant is the source of truth for
+// block-time conversions in our code.
+export const BLOCK_TIME_MS = 500;
+
 // -----------------------------------------------------------------------------
 // DEX configuration (from viem/tempo)
 // -----------------------------------------------------------------------------

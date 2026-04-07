@@ -16,31 +16,22 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Address } from "viem";
+import { encodeFunctionData, erc20Abi, numberToHex } from "viem";
+import { Actions as TempoActions } from "viem/tempo";
+import { useAccount, usePublicClient, useReadContracts } from "wagmi";
+import { chain } from "./config";
 import {
-  encodeFunctionData,
-  erc20Abi,
-  maxUint256,
-  numberToHex,
-} from "viem";
-import {
-  useAccount,
-  usePublicClient,
-  useReadContract,
-  useReadContracts,
-  useWaitForTransactionReceipt,
-  useWriteContract,
-} from "wagmi";
-import { chain, DEX_ABI, DEX_ADDRESS } from "./config";
-import {
+  estimateGasReserve,
   fetchBlockNumber,
   fetchPairLiquidity,
   fetchQuote,
+  fetchSwapHistory,
   type PairLiquidity,
+  type SwapSummary,
 } from "./data";
-import { fetchSwapHistory, type SwapSummary } from "./indexSupply";
 import { getTokenState } from "./tokens";
 import type { Quote, QuoteState } from "./types";
-import { TEMPO_CONNECTOR_ID } from "./wagmi";
+import { classifySwapError } from "./utils";
 
 // -----------------------------------------------------------------------------
 // Chain head — the single source of truth
@@ -131,40 +122,6 @@ export function useBalances(address: Address | undefined) {
   return { ...result, balances };
 }
 
-/**
- * Allowance for `owner` granting `spender` to spend `token`, keyed on the
- * chain head. Spender defaults to the DEX.
- */
-export function useAllowance(
-  token: Address,
-  owner: Address | undefined,
-  spender: Address = DEX_ADDRESS
-) {
-  const { data: blockNumber } = useChainHead();
-
-  useEffect(() => {
-    if (owner && blockNumber !== undefined) {
-      console.log(
-        "[allowance] fetching as of block",
-        blockNumber.toString()
-      );
-    }
-  }, [owner, blockNumber, token]);
-
-  return useReadContract({
-    address: token,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: owner ? [owner, spender] : undefined,
-    blockNumber,
-    query: {
-      enabled: !!owner && blockNumber !== undefined,
-      placeholderData: keepPreviousData,
-      staleTime: Infinity,
-    },
-  });
-}
-
 // -----------------------------------------------------------------------------
 // Quote (DEX read, keyed on chain head)
 // -----------------------------------------------------------------------------
@@ -172,8 +129,13 @@ export function useAllowance(
 /**
  * Quote a swap from `from` to `to` of `amountIn` units, keyed on the chain
  * head. Returns the legacy QuoteState shape so consumers don't have to learn
- * React Query internals. Caller is responsible for debouncing the inputs
- * (see `useDebouncedValue`).
+ * React Query internals.
+ *
+ * Debouncing is handled INSIDE this hook (the queryKey uses a debounced
+ * copy of `amountIn`) so callers can pass the immediate input value and
+ * remain the single source of truth — there's no second `debouncedAmount`
+ * state to drift out of sync. Empty input (`amountIn === 0n`) bypasses the
+ * debounce and clears the displayed quote on the same render.
  */
 export function useQuote(
   from: Address | null,
@@ -182,11 +144,19 @@ export function useQuote(
 ): QuoteState {
   const { data: blockNumber } = useChainHead();
 
+  // Debounce only what fires the network request. Skip the debounce when
+  // the input is empty so the previous quote clears immediately rather
+  // than lingering for 300ms.
+  const debouncedAmountIn = useDebouncedValue(
+    amountIn,
+    amountIn === 0n ? 0 : 300
+  );
+
   const enabled =
     !!from &&
     !!to &&
     from !== to &&
-    amountIn > 0n &&
+    debouncedAmountIn > 0n &&
     blockNumber !== undefined;
 
   const result = useQuery<Quote, Error>({
@@ -194,7 +164,7 @@ export function useQuote(
       "quote",
       from,
       to,
-      amountIn.toString(),
+      debouncedAmountIn.toString(),
       blockNumber?.toString(),
     ],
     queryFn: async () => {
@@ -202,7 +172,7 @@ export function useQuote(
         throw new Error("disabled query ran");
       }
       console.log("[quote] fetching as of block", blockNumber.toString());
-      const r = await fetchQuote(from, to, amountIn, blockNumber);
+      const r = await fetchQuote(from, to, debouncedAmountIn, blockNumber);
       if ("error" in r) throw new Error(r.error);
       return r.quote;
     },
@@ -212,10 +182,25 @@ export function useQuote(
   });
 
   // Translate to the legacy QuoteState shape. On error, drop data so the UI
-  // doesn't render a stale path next to a fresh error.
+  // doesn't render a stale path next to a fresh error. On empty input,
+  // also drop data — checked against the IMMEDIATE amountIn (not the
+  // debounced one) so the swap form clears the moment the user empties
+  // the input box.
+  //
+  // We also drop the cached `result.data` whenever it doesn't match the
+  // CURRENT (immediate) input — otherwise, during the 300ms debounce
+  // window or while the network refetch is in flight after a token
+  // change, the UI would render the previous quote's amounts against
+  // the new input. The Quote object self-describes its inputs, so we
+  // can detect staleness with a direct comparison. Block-tick refetches
+  // still benefit from `keepPreviousData`: same from/to/amountIn → the
+  // cached data is considered fresh and shown without flicker.
   return useMemo<QuoteState>(() => {
     if (from && to && from === to) {
       return { loading: false, error: "same token (no-op)", data: null };
+    }
+    if (amountIn === 0n) {
+      return { loading: false, error: null, data: null };
     }
     if (result.error) {
       return {
@@ -224,36 +209,59 @@ export function useQuote(
         data: null,
       };
     }
+    const dataMatchesInput =
+      !!result.data &&
+      result.data.fromToken === from &&
+      result.data.toToken === to &&
+      result.data.amountIn === amountIn;
     return {
-      loading: result.isFetching,
+      loading: result.isFetching || !dataMatchesInput,
       error: null,
-      data: result.data ?? null,
+      data: dataMatchesInput ? result.data : null,
     };
-  }, [from, to, result.isFetching, result.error, result.data]);
+  }, [from, to, amountIn, result.isFetching, result.error, result.data]);
 }
 
 // -----------------------------------------------------------------------------
 // Swap history (Index Supply, keyed on chain head)
 // -----------------------------------------------------------------------------
 
-/** Swap history for `address`, keyed on the chain head. */
+/**
+ * Swap history for `address`. Refetches on every chain-head tick via an
+ * effect rather than via the queryKey, so the cache entry is shared across
+ * mounts: tabbing away from /dex and back doesn't blow away the cached
+ * swaps and re-show the "no trades yet" placeholder.
+ */
 export function useSwapHistory(
   address: Address | undefined
 ): UseQueryResult<SwapSummary[]> {
   const { data: blockNumber } = useChainHead();
-  return useQuery<SwapSummary[]>({
-    queryKey: ["history", address, blockNumber?.toString()],
+  const queryClient = useQueryClient();
+
+  const result = useQuery<SwapSummary[]>({
+    queryKey: ["history", address],
     queryFn: async () => {
       if (!address || blockNumber === undefined) {
         throw new Error("disabled query ran");
       }
       console.log("[history] fetching as of block", blockNumber.toString());
-      return fetchSwapHistory(address, blockNumber, 20);
+      return fetchSwapHistory(address, blockNumber);
     },
     enabled: !!address && blockNumber !== undefined,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
   });
+
+  // staleTime: Infinity means the query won't auto-refetch on its own; we
+  // explicitly invalidate it whenever the chain head moves. invalidateQueries
+  // triggers a refetch with the latest queryFn closure (which captures the
+  // current blockNumber).
+  useEffect(() => {
+    if (!address || blockNumber === undefined) return;
+    queryClient.invalidateQueries({ queryKey: ["history", address] });
+  }, [address, blockNumber, queryClient]);
+
+  return result;
 }
 
 // -----------------------------------------------------------------------------
@@ -283,6 +291,66 @@ export function usePairLiquidity(
     placeholderData: keepPreviousData,
     staleTime: Infinity,
   });
+}
+
+// -----------------------------------------------------------------------------
+// Max swappable amount (gas reserve)
+// -----------------------------------------------------------------------------
+
+// Conservative fallback if eth_estimateGas fails — e.g. for a brand-new
+// account that has zero balance and so the simulation reverts. In the
+// from-token's smallest unit; 50000n at 6 decimals = $0.05.
+const GAS_RESERVE_FALLBACK = 50_000n;
+
+/**
+ * Compute the maximum amount the user can swap given their balance and
+ * the gas headroom needed for the swap tx itself. On Tempo the batched
+ * swap pays gas in `feeToken: fromToken`, so the user effectively needs
+ * `balance ≥ amountIn + gasReserve`. Returning `maxSwappable = balance -
+ * gasReserve` lets both the MAX button and the insufficient-balance
+ * check use the same value.
+ *
+ * The reserve is `eth_estimateGas × maxFeePerGas × 1.5` (the 50% buffer
+ * absorbs gas-price drift between estimation and submission, plus the
+ * approve overhead when bundled). On any estimation failure we fall
+ * back to GAS_RESERVE_FALLBACK so the form stays usable.
+ */
+export function useMaxSwappable(
+  fromToken: Address | undefined,
+  toToken: Address | undefined,
+  address: Address | undefined,
+  balance: bigint
+): { maxSwappable: bigint; gasReserve: bigint } {
+  const { data: blockNumber } = useChainHead();
+
+  const { data: gasReserve = GAS_RESERVE_FALLBACK } = useQuery<bigint>({
+    queryKey: [
+      "gas-reserve",
+      fromToken,
+      toToken,
+      address,
+      blockNumber?.toString(),
+    ],
+    queryFn: async () => {
+      if (!fromToken || !toToken || !address) return GAS_RESERVE_FALLBACK;
+      try {
+        return await estimateGasReserve(fromToken, toToken, address);
+      } catch (err) {
+        console.warn("[gas] estimation failed, using fallback", err);
+        return GAS_RESERVE_FALLBACK;
+      }
+    },
+    enabled:
+      !!fromToken &&
+      !!toToken &&
+      !!address &&
+      blockNumber !== undefined,
+    placeholderData: keepPreviousData,
+    staleTime: Infinity,
+  });
+
+  const maxSwappable = balance > gasReserve ? balance - gasReserve : 0n;
+  return { maxSwappable, gasReserve };
 }
 
 // -----------------------------------------------------------------------------
@@ -320,214 +388,73 @@ export type SwapResult =
 export interface SubmitSwap {
   /** Latest result; null until the user submits anything. */
   result: SwapResult;
-  /** Detail pending flags for individual button states. */
-  isApprovePending: boolean;
-  isSwapPending: boolean;
-  isBatchedPending: boolean;
-  /** True if any tx is currently in flight (submission or confirmation). */
+  /** True while a tx is in flight (submission or confirmation). */
   isPending: boolean;
-  /** True if the connected wallet supports our atomic batched submit path. */
-  supportsBatchedCalls: boolean;
-  /** Fire an infinite ERC-20 approval for the DEX. */
-  approve: (token: Address) => void;
-  /** Submit a non-batched swap (caller has already approved). */
-  swap: (params: SwapParams) => void;
   /** Submit an atomic batched approve+swap via the Tempo Wallet dialog. */
-  batchedSwap: (params: SwapParams, needsApproval: boolean) => Promise<void>;
+  submit: (params: SwapParams) => Promise<void>;
   /** Clear `result` (e.g. when inputs change or user clicks "continue"). */
   reset: () => void;
 }
 
 /**
- * Encapsulates all swap-related transaction state and side effects:
- *   - Approve write + receipt wait
- *   - Non-batched swap write + receipt wait + success messaging
- *   - Batched (Tempo) atomic approve+swap via direct provider call
- *   - Cascading chain refresh on every confirmation so balances/allowance/
- *     history/quote refetch in lockstep
- *   - Logging the landing block of every successful swap
+ * Submits an atomic approve+swap batch via the Tempo Wallet dialog.
  *
- * The hook is connector-agnostic — `supportsBatchedCalls` tells the caller
- * which submit path to expose in the UI.
+ * The `accounts` SDK strips `feeToken` from `wallet_sendCalls`
+ * capabilities, so we bypass `useSendCalls` and call the connector's
+ * provider directly. Tempo's `eth_sendTransaction` accepts both `calls`
+ * (atomic batching) and `feeToken` (ERC-20 gas payment), letting brand
+ * new accounts swap without holding any native gas token.
+ *
+ * After the receipt lands we cascade-refresh the chain head twice (now,
+ * and ~2.5s later) so balances / history / quote refetch in lockstep —
+ * the second pass catches the case where the indexer was still behind
+ * on the first.
  */
 export function useSubmitSwap(): SubmitSwap {
   const { address, connector } = useAccount();
   const publicClient = usePublicClient();
   const chainRefresh = useChainRefresh();
 
-  const supportsBatchedCalls =
-    !!connector && connector.id === TEMPO_CONNECTOR_ID;
-
   const [result, setResult] = useState<SwapResult>(null);
-  const [pendingParams, setPendingParams] = useState<SwapParams | null>(null);
-  const [isBatchedPending, setIsBatchedPending] = useState(false);
+  const [isPending, setIsPending] = useState(false);
 
-  // Approve flow ---------------------------------------------------------
-  const approveWrite = useWriteContract();
-  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
-    hash: approveWrite.data,
-    query: { enabled: !!approveWrite.data },
-  });
-
-  useEffect(() => {
-    if (approveWrite.data && !isApproveConfirming && approveWrite.isSuccess) {
-      // Cascade refresh: chain head bumps → allowance refetches.
-      chainRefresh();
-    }
-  }, [
-    approveWrite.data,
-    isApproveConfirming,
-    approveWrite.isSuccess,
-    chainRefresh,
-  ]);
-
-  const approve = useCallback(
-    (token: Address) => {
-      console.log("[approve] called", { token, spender: DEX_ADDRESS });
-      approveWrite.writeContract(
-        {
-          address: token,
-          abi: erc20Abi,
-          functionName: "approve",
-          // Infinite approval so the user only approves once per token.
-          args: [DEX_ADDRESS, maxUint256],
-        },
-        {
-          onError: (error) => {
-            console.error("[approve] error", error);
-          },
-        }
-      );
-    },
-    [approveWrite]
-  );
-
-  // Non-batched swap flow ------------------------------------------------
-  const swapWrite = useWriteContract();
-  const { data: swapReceipt, isLoading: isSwapConfirming } =
-    useWaitForTransactionReceipt({
-      hash: swapWrite.data,
-      query: { enabled: !!swapWrite.data },
-    });
-
-  useEffect(() => {
-    if (
-      swapWrite.data &&
-      !isSwapConfirming &&
-      swapWrite.isSuccess &&
-      pendingParams
-    ) {
-      setResult({
-        type: "success",
-        fromAmount: pendingParams.fromAmount,
-        fromSymbol: pendingParams.fromSymbol,
-        toAmount: pendingParams.toAmount,
-        toSymbol: pendingParams.toSymbol,
-      });
-      if (swapReceipt) {
-        console.log(
-          "[swap] landed in block",
-          swapReceipt.blockNumber.toString()
-        );
-      }
-      // Cascade refresh: chain head bumps → balances, allowance, history,
-      // and quote all refetch automatically off the new key.
-      chainRefresh();
-    }
-  }, [
-    swapWrite.data,
-    isSwapConfirming,
-    swapWrite.isSuccess,
-    swapReceipt,
-    pendingParams,
-    chainRefresh,
-  ]);
-
-  const swap = useCallback(
-    (params: SwapParams) => {
-      console.log("[swap] called", {
+  const submit = useCallback(
+    async (params: SwapParams) => {
+      console.log("[submit] called", {
         fromToken: params.fromToken,
         toToken: params.toToken,
         amountIn: params.amountIn.toString(),
         minAmountOut: params.minAmountOut.toString(),
-      });
-      if (params.amountIn === 0n) return;
-      setPendingParams(params);
-      setResult(null);
-      swapWrite.writeContract(
-        {
-          address: DEX_ADDRESS,
-          abi: DEX_ABI,
-          functionName: "swapExactAmountIn",
-          args: [
-            params.fromToken,
-            params.toToken,
-            params.amountIn,
-            params.minAmountOut,
-          ],
-        },
-        {
-          onError: (error) => {
-            console.error("[swap] error", error);
-            setResult({
-              type: "error",
-              message: error.message || "swap failed",
-            });
-          },
-        }
-      );
-    },
-    [swapWrite]
-  );
-
-  // Batched swap flow (Tempo Wallet) -------------------------------------
-  //
-  // The `accounts` SDK does NOT honor `feeToken` as a `wallet_sendCalls`
-  // capability — its schema strips it. Instead, the Tempo
-  // `eth_sendTransaction` request format accepts both `calls` (for atomic
-  // batching) and `feeToken` (for ERC-20 gas payment), so we bypass
-  // `useSendCalls` and call the connector's provider directly. This lets
-  // brand-new accounts swap without holding any native gas token.
-  const batchedSwap = useCallback(
-    async (params: SwapParams, needsApproval: boolean) => {
-      console.log("[batchedSwap] called", {
-        fromToken: params.fromToken,
-        toToken: params.toToken,
-        amountIn: params.amountIn.toString(),
-        minAmountOut: params.minAmountOut.toString(),
-        needsApproval,
       });
 
       if (params.amountIn === 0n || !connector || !address) return;
 
-      const calls: { to: Address; data: `0x${string}` }[] = [];
-      if (needsApproval) {
-        calls.push({
+      // Build the swap calldata via the official Tempo SDK helper so the
+      // ABI and arg shape stay in lockstep with viem/tempo.
+      const sellCall = TempoActions.dex.sell.call({
+        tokenIn: params.fromToken,
+        tokenOut: params.toToken,
+        amountIn: params.amountIn,
+        minAmountOut: params.minAmountOut,
+      });
+
+      // Always bundle a per-call approve atomically with the swap. This
+      // is cheaper than tracking allowance state across renders, and the
+      // approval doesn't persist beyond this tx.
+      const calls = [
+        {
           to: params.fromToken,
           data: encodeFunctionData({
             abi: erc20Abi,
             functionName: "approve",
-            args: [DEX_ADDRESS, params.amountIn],
+            args: [sellCall.to, params.amountIn],
           }),
-        });
-      }
-      calls.push({
-        to: DEX_ADDRESS,
-        data: encodeFunctionData({
-          abi: DEX_ABI,
-          functionName: "swapExactAmountIn",
-          args: [
-            params.fromToken,
-            params.toToken,
-            params.amountIn,
-            params.minAmountOut,
-          ],
-        }),
-      });
-      console.log("[batchedSwap] calls:", calls.length);
+        },
+        { to: sellCall.to, data: sellCall.data },
+      ];
 
       setResult(null);
-      setIsBatchedPending(true);
+      setIsPending(true);
 
       try {
         // Tempo's eth_sendTransaction accepts a `calls` array for atomic
@@ -550,18 +477,13 @@ export function useSubmitSwap(): SubmitSwap {
             },
           ],
         });
-        console.log("[batchedSwap] tx hash", hash);
+        console.log("[submit] tx hash", hash);
 
-        // Wait for receipt so we can log the landing block and ensure
-        // success state reflects an actually mined tx.
         if (publicClient) {
           const receipt = await publicClient.waitForTransactionReceipt({
             hash,
           });
-          console.log(
-            "[swap] landed in block",
-            receipt.blockNumber.toString()
-          );
+          console.log("[submit] landed in block", receipt.blockNumber.toString());
         }
 
         setResult({
@@ -571,16 +493,15 @@ export function useSubmitSwap(): SubmitSwap {
           toAmount: params.toAmount,
           toSymbol: params.toSymbol,
         });
-        // Cascade refresh: chain head bumps → balances, allowance, history,
-        // and quote all refetch automatically off the new key.
         await chainRefresh();
+        setTimeout(() => {
+          void chainRefresh();
+        }, 2500);
       } catch (error) {
-        console.error("[batchedSwap] error", error);
-        const message =
-          error instanceof Error ? error.message : "swap failed";
-        setResult({ type: "error", message });
+        console.error("[submit] error", error);
+        setResult({ type: "error", message: classifySwapError(error) });
       } finally {
-        setIsBatchedPending(false);
+        setIsPending(false);
       }
     },
     [connector, address, publicClient, chainRefresh]
@@ -588,22 +509,7 @@ export function useSubmitSwap(): SubmitSwap {
 
   const reset = useCallback(() => setResult(null), []);
 
-  const isApprovePending = approveWrite.isPending || isApproveConfirming;
-  const isSwapPending = swapWrite.isPending || isSwapConfirming;
-  const isPending = isApprovePending || isSwapPending || isBatchedPending;
-
-  return {
-    result,
-    isApprovePending,
-    isSwapPending,
-    isBatchedPending,
-    isPending,
-    supportsBatchedCalls,
-    approve,
-    swap,
-    batchedSwap,
-    reset,
-  };
+  return { result, isPending, submit, reset };
 }
 
 // -----------------------------------------------------------------------------

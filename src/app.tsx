@@ -9,8 +9,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getAddress, isAddress, parseUnits, type Address } from "viem";
-import { useAccount, useDisconnect, WagmiProvider } from "wagmi";
-import { useChainHead, useDebouncedValue, useQuote } from "./chain";
+import { useAccount, WagmiProvider } from "wagmi";
+import { useChainHead, useQuote } from "./chain";
 import {
   AssetsBox,
   HistoryBox,
@@ -18,11 +18,10 @@ import {
   SwapBox,
   TabBar,
 } from "./components";
-import { EXPLORER_URL, NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
+import { NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
 import { getNonRootTokens } from "./data";
 import "./style.css";
 import { loadTokens } from "./tokens";
-import { shortenAddress } from "./utils";
 import { config } from "./wagmi";
 
 // Debug: set to an address to override connected wallet (null in prod)
@@ -94,7 +93,6 @@ function App() {
 function Page() {
   const { address: connectedAddress, isConnected: walletConnected } =
     useAccount();
-  const { disconnect } = useDisconnect();
 
   // Debug override for testing
   const address = DEBUG_WALLET_ADDR ?? connectedAddress;
@@ -118,18 +116,19 @@ function Page() {
   // Chain head — single source of truth, polled by the chain layer.
   const { data: blockNumber } = useChainHead();
 
-  // Debounced quote — debounce the amount input, then key off the (debounced
-  // amount, from, to, blockNumber) tuple via useQuote.
-  const debouncedAmount = useDebouncedValue(amount, 300);
+  // Single input source of truth: `amount` (the raw string state). Everything
+  // else is derived. `useQuote` does its own internal debouncing of the
+  // network call, so we pass the immediate parsed value here — no second
+  // `debouncedAmount` state to drift out of sync with the form.
   const amountIn = useMemo(() => {
-    const parsed = Number(debouncedAmount);
+    const parsed = Number(amount);
     if (!Number.isFinite(parsed) || parsed <= 0) return 0n;
     try {
-      return parseUnits(debouncedAmount, TOKEN_DECIMALS);
+      return parseUnits(amount, TOKEN_DECIMALS);
     } catch {
       return 0n;
     }
-  }, [debouncedAmount]);
+  }, [amount]);
   const quote = useQuote(fromToken, toToken, amountIn);
 
   // -----------------------------------------------------------------------------
@@ -139,11 +138,16 @@ function Page() {
   useEffect(() => {
     loadTokens().then((state) => {
       if (!state.error && state.tokens.length > 0) {
-        // Default pair: USDC.e → pathUSD
-        const usdce = state.tokens.find(
-          (addr) => state.tokenMeta[addr]?.symbol === "USDC.e"
-        );
-        if (usdce) {
+        // Default pair: USDC.e → USDT0, with progressive fallbacks if either
+        // symbol isn't in the loaded tokenlist.
+        const findBySymbol = (symbol: string) =>
+          state.tokens.find((addr) => state.tokenMeta[addr]?.symbol === symbol);
+        const usdce = findBySymbol("USDC.e");
+        const usdt0 = findBySymbol("USDT0");
+        if (usdce && usdt0) {
+          setFromToken(usdce);
+          setToToken(usdt0);
+        } else if (usdce) {
           setFromToken(usdce);
           setToToken(ROOT_TOKEN);
         } else if (state.tokens.length >= 2) {
@@ -227,22 +231,6 @@ function Page() {
           <span className="badge">{NETWORK_BADGE}</span>
         </div>
       </header>
-
-      {isConnected && address && (
-        <div className="account-bar">
-          <a
-            className="btn-link"
-            href={`${EXPLORER_URL}/address/${address}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {shortenAddress(address)}
-          </a>
-          <button className="btn-link" onClick={() => disconnect()}>
-            disconnect
-          </button>
-        </div>
-      )}
 
       {activeTab === "dex" && (
         <>
