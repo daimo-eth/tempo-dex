@@ -1,9 +1,8 @@
 // HistoryBox - displays swap history for connected wallet
-import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { formatUnits } from "viem";
+import { useSwapHistory } from "../chain";
 import { EXPLORER_URL, TOKEN_DECIMALS } from "../config";
-import { fetchSwapHistory, type SwapSummary } from "../indexSupply";
 import { getSymbol } from "../tokens";
 import { shortenAddress } from "../utils";
 
@@ -13,54 +12,17 @@ import { shortenAddress } from "../utils";
 
 interface HistoryBoxProps {
   address: Address;
-  blockNumber: bigint;
-}
-
-interface HistoryState {
-  loading: boolean;
-  error: string | null;
-  swaps: SwapSummary[];
 }
 
 // -----------------------------------------------------------------------------
 // Component
 // -----------------------------------------------------------------------------
 
-export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
-  const [state, setState] = useState<HistoryState>({
-    loading: true,
-    error: null,
-    swaps: [],
-  });
-
-  // Deduplication: track last fetched params
-  const lastFetchRef = useRef<string>("");
-
-  useEffect(() => {
-    const fetchKey = `${address}-${blockNumber}`;
-    if (fetchKey === lastFetchRef.current) return;
-    lastFetchRef.current = fetchKey;
-
-    let cancelled = false;
-
-    fetchSwapHistory(address, blockNumber, 20)
-      .then((swaps) => {
-        if (!cancelled) {
-          setState({ loading: false, error: null, swaps });
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : "failed to load history";
-          setState((s) => ({ ...s, loading: false, error: message }));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [address, blockNumber]);
+export function HistoryBox({ address }: HistoryBoxProps) {
+  // Keyed off the chain head via the chain layer. placeholderData keeps the
+  // previous swaps visible while a refetch is in flight, so the table no
+  // longer flickers on every block tick.
+  const { data: swaps } = useSwapHistory(address);
 
   const formatAmount = (amount: bigint) => {
     const num = Number(formatUnits(amount, TOKEN_DECIMALS));
@@ -70,7 +32,7 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
   };
 
   // Don't render anything if no swaps
-  if (state.swaps.length === 0) {
+  if (!swaps || swaps.length === 0) {
     return null;
   }
 
@@ -88,7 +50,7 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
             </tr>
           </thead>
           <tbody>
-            {state.swaps.map((swap) => (
+            {swaps.map((swap) => (
               <tr key={swap.txHash}>
                 <td>{swap.blockNumber.toString()}</td>
                 <td>
@@ -116,4 +78,3 @@ export function HistoryBox({ address, blockNumber }: HistoryBoxProps) {
     </section>
   );
 }
-

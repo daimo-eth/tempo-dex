@@ -1,21 +1,18 @@
 // SwapBox - swap form, wallet connection, and execution
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Address } from "viem";
-import { encodeFunctionData, erc20Abi, formatUnits, maxUint256, parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
+import { useAccount, useConnect, useConnectors, useSwitchChain } from "wagmi";
 import {
-  useAccount,
-  useConnect,
-  useConnectors,
-  useReadContract,
-  useReadContracts,
-  useSendCalls,
-  useSwitchChain,
-  useWaitForTransactionReceipt,
-  useWriteContract,
-} from "wagmi";
-import { chain, DEX_ABI, DEX_ADDRESS, TOKEN_DECIMALS } from "../config";
+  useAllowance,
+  useBalances,
+  useSubmitSwap,
+  type SwapParams,
+} from "../chain";
+import { chain, TOKEN_DECIMALS } from "../config";
 import { getTokenState } from "../tokens";
 import type { QuoteState } from "../types";
+import { TEMPO_CONNECTOR_ID } from "../wagmi";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -36,19 +33,7 @@ interface SwapBoxProps {
   setFromToken: (addr: Address) => void;
   setToToken: (addr: Address) => void;
   setAmount: (v: string) => void;
-  onSwapSuccess: () => void;
 }
-
-type SwapResult =
-  | {
-      type: "success";
-      fromAmount: string;
-      fromSymbol: string;
-      toAmount: string;
-      toSymbol: string;
-    }
-  | { type: "error"; message: string }
-  | null;
 
 // -----------------------------------------------------------------------------
 // Component
@@ -62,7 +47,6 @@ export function SwapBox({
   setFromToken,
   setToToken,
   setAmount,
-  onSwapSuccess,
 }: SwapBoxProps) {
   // Get tokens from TokenManager
   const { tokens, tokenMeta } = getTokenState();
@@ -74,7 +58,6 @@ export function SwapBox({
     address,
     isConnected,
     chainId: walletChainId,
-    connector,
   } = useAccount();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const connectors = useConnectors();
@@ -94,24 +77,18 @@ export function SwapBox({
 
   const [showWalletOptions, setShowWalletOptions] = useState(false);
 
-  // Check if wallet supports batched calls
-  // tempo.ts webAuthn connector supports batched calls via walletNamespaceCompat
-  // but doesn't implement wallet_getCapabilities, so we detect by connector type
-  const supportsBatchedCalls = useMemo(() => {
-    if (!isConnected || !connector) return false;
-    // tempo.ts webAuthn connector has id/type 'webAuthn'
-    return connector.id === "webAuthn" || connector.type === "webAuthn";
-  }, [isConnected, connector]);
+  // All transaction state (approve, swap, batched swap, pending flags,
+  // success/error result, post-confirmation chain refresh) lives inside
+  // useSubmitSwap.
+  const submit = useSubmitSwap();
 
   const isWrongChain = isConnected && walletChainId !== REQUIRED_CHAIN_ID;
   const isNoOp = fromToken === toToken;
 
-  const [swapResult, setSwapResult] = useState<SwapResult>(null);
-
-  // Clear swap result when inputs change
+  // Clear any previous swap result when inputs change
   useEffect(() => {
-    setSwapResult(null);
-  }, [fromToken, toToken, amount]);
+    submit.reset();
+  }, [fromToken, toToken, amount, submit]);
 
   // Parse amount
   const amountIn = useMemo(() => {
@@ -120,137 +97,13 @@ export function SwapBox({
     return parseUnits(amount, TOKEN_DECIMALS);
   }, [amount]);
 
-  // Fetch balances
-  const balanceContracts = useMemo(() => {
-    if (!address) return [];
-    return tokens.map((tokenAddr) => ({
-      address: tokenAddr,
-      abi: erc20Abi,
-      functionName: "balanceOf" as const,
-      args: [address] as const,
-    }));
-  }, [address, tokens]);
-
-  const { data: balanceResults } = useReadContracts({
-    contracts: balanceContracts,
-    query: { enabled: isConnected && balanceContracts.length > 0 },
-  });
-
-  const balances = useMemo(() => {
-    const map: Record<Address, bigint> = {};
-    if (balanceResults) {
-      tokens.forEach((addr, idx) => {
-        const result = balanceResults[idx];
-        map[addr] =
-          result?.status === "success" ? (result.result as bigint) : 0n;
-      });
-    }
-    return map;
-  }, [balanceResults, tokens]);
-
-  // Fetch allowance for fromToken (spender is DEX)
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: fromToken,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: address ? [address, DEX_ADDRESS] : undefined,
-    query: { enabled: isConnected && !!address },
-  });
+  // Balances and allowance — both keyed on the chain head, so they cascade
+  // automatically whenever the head ticks or is fast-forwarded after a swap.
+  const { balances } = useBalances(address);
+  const { data: allowance } = useAllowance(fromToken, address);
 
   const currentAllowance = (allowance as bigint) ?? 0n;
   const needsApproval = amountIn > 0n && currentAllowance < amountIn;
-
-  // Approve transaction
-  const approveWrite = useWriteContract();
-
-  // Wait for approve tx confirmation, then refetch allowance
-  const { isLoading: isApproveConfirming } = useWaitForTransactionReceipt({
-    hash: approveWrite.data,
-    query: {
-      enabled: !!approveWrite.data,
-    },
-  });
-
-  // Refetch allowance when approve tx is confirmed
-  useEffect(() => {
-    if (approveWrite.data && !isApproveConfirming && approveWrite.isSuccess) {
-      refetchAllowance();
-    }
-  }, [
-    approveWrite.data,
-    isApproveConfirming,
-    approveWrite.isSuccess,
-    refetchAllowance,
-  ]);
-
-  const isApprovePending = approveWrite.isPending || isApproveConfirming;
-
-  const handleApprove = () => {
-    console.log("[approve] handleApprove called", {
-      fromToken,
-      spender: DEX_ADDRESS,
-      amount: "infinite",
-    });
-
-    // Infinite approval so user only has to approve once per token
-    approveWrite.writeContract(
-      {
-        address: fromToken,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [DEX_ADDRESS, maxUint256],
-      },
-      {
-        onError: (error) => {
-          console.error("[approve] error", error);
-        },
-      }
-    );
-  };
-
-  // Swap transaction
-  const swapWrite = useWriteContract();
-
-  // Wait for swap tx confirmation
-  const { isLoading: isSwapConfirming } = useWaitForTransactionReceipt({
-    hash: swapWrite.data,
-    query: {
-      enabled: !!swapWrite.data,
-    },
-  });
-
-  // Trigger onSwapSuccess when swap tx is confirmed (fallback flow)
-  const [lastSwapParams, setLastSwapParams] = useState<{
-    fromAmount: string;
-    fromSymbol: string;
-    toAmount: string;
-    toSymbol: string;
-  } | null>(null);
-
-  useEffect(() => {
-    if (
-      swapWrite.data &&
-      !isSwapConfirming &&
-      swapWrite.isSuccess &&
-      lastSwapParams
-    ) {
-      setSwapResult({
-        type: "success",
-        ...lastSwapParams,
-      });
-      onSwapSuccess();
-      refetchAllowance();
-    }
-  }, [
-    swapWrite.data,
-    isSwapConfirming,
-    swapWrite.isSuccess,
-    lastSwapParams,
-    onSwapSuccess,
-    refetchAllowance,
-  ]);
-
-  const isSwapPending = swapWrite.isPending || isSwapConfirming;
 
   // Quote info
   const amountOut = quote.data?.amountOut ?? 0n;
@@ -264,151 +117,33 @@ export function SwapBox({
         1000n
       : 0n;
 
-  const handleSwap = () => {
-    console.log("[swap] handleSwap called", {
+  // Build the SwapParams payload from current form/quote state. Captured at
+  // call time so the success message reflects what was actually submitted.
+  const buildSwapParams = useCallback((): SwapParams => {
+    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
+    return {
       fromToken,
       toToken,
-      amountIn: amountIn.toString(),
-      minAmountOut: minAmountOut.toString(),
-    });
-
-    if (amountIn === 0n) {
-      console.log("[swap] early return - zero amount");
-      return;
-    }
-
-    // Capture params for success message
-    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
-    setLastSwapParams({
+      amountIn,
+      minAmountOut,
       fromAmount: inputFormatted.toFixed(2),
       fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
       toAmount: amountOutFormatted.toFixed(2),
       toSymbol: tokenMeta[toToken]?.symbol ?? "",
-    });
-    setSwapResult(null);
+    };
+  }, [
+    fromToken,
+    toToken,
+    amountIn,
+    minAmountOut,
+    amountOutFormatted,
+    tokenMeta,
+  ]);
 
-    // DEX has built-in routing - single call works for any pair
-    swapWrite.writeContract(
-      {
-        address: DEX_ADDRESS,
-        abi: DEX_ABI,
-        functionName: "swapExactAmountIn",
-        args: [fromToken, toToken, amountIn, minAmountOut],
-      },
-      {
-        onError: (error) => {
-          console.error("[swap] error", error);
-          setSwapResult({
-            type: "error",
-            message: error.message || "swap failed",
-          });
-        },
-      }
-    );
-  };
-
-  // Batched swap using EIP-5792 sendCalls (works with Tempo webAuthn)
-  const batchedSwap = useSendCalls();
-  const isBatchedPending = batchedSwap.isPending;
-
-  // Track batched swap result
-  const [lastBatchedSwapParams, setLastBatchedSwapParams] = useState<{
-    fromAmount: string;
-    fromSymbol: string;
-    toAmount: string;
-    toSymbol: string;
-  } | null>(null);
-
-  // Handle batched swap success/failure
-  const handleBatchedSwapResult = useCallback(
-    (status: "success" | "failure") => {
-      if (status === "success" && lastBatchedSwapParams) {
-        setSwapResult({
-          type: "success",
-          ...lastBatchedSwapParams,
-        });
-        onSwapSuccess();
-        refetchAllowance();
-      } else if (status === "failure") {
-        setSwapResult({
-          type: "error",
-          message: "swap failed",
-        });
-      }
-    },
-    [lastBatchedSwapParams, onSwapSuccess, refetchAllowance]
-  );
-
-  const handleBatchedSwap = () => {
-    console.log("[batchedSwap] handleBatchedSwap called", {
-      fromToken,
-      toToken,
-      amountIn: amountIn.toString(),
-      minAmountOut: minAmountOut.toString(),
-      needsApproval,
-    });
-
-    if (amountIn === 0n) {
-      console.log("[batchedSwap] early return - zero amount");
-      return;
-    }
-
-    // Build calls array
-    const calls: { to: Address; data: `0x${string}` }[] = [];
-
-    // Add approval if needed
-    if (needsApproval) {
-      calls.push({
-        to: fromToken,
-        data: encodeFunctionData({
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [DEX_ADDRESS, amountIn],
-        }),
-      });
-    }
-
-    // Add swap call
-    calls.push({
-      to: DEX_ADDRESS,
-      data: encodeFunctionData({
-        abi: DEX_ABI,
-        functionName: "swapExactAmountIn",
-        args: [fromToken, toToken, amountIn, minAmountOut],
-      }),
-    });
-
-    console.log("[batchedSwap] calls:", calls.length);
-
-    // Store params for success message
-    const inputFormatted = Number(formatUnits(amountIn, TOKEN_DECIMALS));
-    setLastBatchedSwapParams({
-      fromAmount: inputFormatted.toFixed(2),
-      fromSymbol: tokenMeta[fromToken]?.symbol ?? "",
-      toAmount: amountOutFormatted.toFixed(2),
-      toSymbol: tokenMeta[toToken]?.symbol ?? "",
-    });
-    setSwapResult(null);
-
-    batchedSwap.sendCalls(
-      { calls, capabilities: { feeToken: fromToken } },
-      {
-        onSuccess: (result) => {
-          console.log("[batchedSwap] sendCalls result", result);
-          // The result contains the batch ID - we need to wait for confirmation
-          // For now, assume success if we get here (the UI will update on receipt)
-          handleBatchedSwapResult("success");
-        },
-        onError: (error) => {
-          console.error("[batchedSwap] error", error);
-          setSwapResult({
-            type: "error",
-            message: error.message || "swap failed",
-          });
-        },
-      }
-    );
-  };
+  const handleApprove = () => submit.approve(fromToken);
+  const handleSwap = () => submit.swap(buildSwapParams());
+  const handleBatchedSwap = () =>
+    void submit.batchedSwap(buildSwapParams(), needsApproval);
 
   // Token lists for dropdowns
   const tokensByBalance = useMemo(() => {
@@ -447,7 +182,8 @@ export function SwapBox({
     return num.toFixed(4);
   };
 
-  // Wallet options
+  // Wallet options - Tempo Wallet first, then specific injected wallets,
+  // hiding the generic Injected entry when a specific injected is present.
   const filteredConnectors = useMemo(() => {
     const hasSpecificInjected = connectors.some(
       (c) => c.type === "injected" && c.name !== "Injected"
@@ -455,9 +191,9 @@ export function SwapBox({
     return connectors
       .filter((c) => !(c.name === "Injected" && hasSpecificInjected))
       .sort((a, b) => {
-        const aInj = a.type === "injected" ? 1 : 0;
-        const bInj = b.type === "injected" ? 1 : 0;
-        return aInj - bInj;
+        if (a.id === TEMPO_CONNECTOR_ID) return -1;
+        if (b.id === TEMPO_CONNECTOR_ID) return 1;
+        return 0;
       });
   }, [connectors]);
 
@@ -467,14 +203,14 @@ export function SwapBox({
   const canApprove =
     !isNoOp &&
     !insufficientBalance &&
-    !isApprovePending &&
+    !submit.isApprovePending &&
     amountIn > 0n &&
     hasValidQuote;
 
   const canSwap =
     !isNoOp &&
     !insufficientBalance &&
-    !isSwapPending &&
+    !submit.isSwapPending &&
     !needsApproval &&
     amountOut > 0n &&
     hasValidQuote;
@@ -483,7 +219,7 @@ export function SwapBox({
   const canBatchedSwap =
     !isNoOp &&
     !insufficientBalance &&
-    !isBatchedPending &&
+    !submit.isBatchedPending &&
     amountOut > 0n &&
     hasValidQuote;
 
@@ -500,42 +236,26 @@ export function SwapBox({
   // Render action button(s)
   const renderActionButtons = () => {
     if (showWalletOptions) {
-      const webAuthnConnector = filteredConnectors.find(
-        (c) => c.id === "webAuthn" || c.type === "webAuthn"
+      const tempoConnector = filteredConnectors.find(
+        (c) => c.id === TEMPO_CONNECTOR_ID
       );
       const otherConnectors = filteredConnectors.filter(
-        (c) => c.id !== "webAuthn" && c.type !== "webAuthn"
+        (c) => c.id !== TEMPO_CONNECTOR_ID
       );
 
       return (
         <div className="wallet-options">
-          {webAuthnConnector && (
+          {tempoConnector && (
             <div className="wallet-native">
               <button
                 className="btn-primary"
                 onClick={() => {
-                  // Sign up creates a new passkey
-                  connect({
-                    connector: webAuthnConnector,
-                    capabilities: { type: "sign-up" },
-                  } as Parameters<typeof connect>[0]);
+                  // The Tempo Wallet dialog handles signup vs login internally
+                  connect({ connector: tempoConnector });
                   setShowWalletOptions(false);
                 }}
               >
-                SIGN UP
-              </button>
-              <button
-                className="btn-secondary"
-                onClick={() => {
-                  // Log in uses an existing passkey
-                  connect({
-                    connector: webAuthnConnector,
-                    capabilities: { type: "sign-in" },
-                  } as Parameters<typeof connect>[0]);
-                  setShowWalletOptions(false);
-                }}
-              >
-                LOG IN
+                CONNECT WITH TEMPO
               </button>
             </div>
           )}
@@ -593,15 +313,15 @@ export function SwapBox({
 
     // Connected and on correct chain
     // Use batched flow if wallet supports it, otherwise traditional approve → swap
-    if (supportsBatchedCalls) {
+    if (submit.supportsBatchedCalls) {
       return (
         <div className="action-section">
           <button
             className="btn-primary"
-            disabled={!canBatchedSwap || !!swapResult}
+            disabled={!canBatchedSwap || !!submit.result}
             onClick={handleBatchedSwap}
           >
-            {isBatchedPending ? "SWAPPING..." : "SWAP"}
+            {submit.isBatchedPending ? "SWAPPING..." : "SWAP"}
           </button>
         </div>
       );
@@ -613,18 +333,18 @@ export function SwapBox({
         {needsApproval ? (
           <button
             className="btn-primary"
-            disabled={!canApprove || !!swapResult}
+            disabled={!canApprove || !!submit.result}
             onClick={handleApprove}
           >
-            {isApprovePending ? "APPROVING..." : "APPROVE"}
+            {submit.isApprovePending ? "APPROVING..." : "APPROVE"}
           </button>
         ) : (
           <button
             className="btn-primary"
-            disabled={!canSwap || !!swapResult}
+            disabled={!canSwap || !!submit.result}
             onClick={handleSwap}
           >
-            {isSwapPending ? "SWAPPING..." : "SWAP"}
+            {submit.isSwapPending ? "SWAPPING..." : "SWAP"}
           </button>
         )}
       </div>
@@ -705,23 +425,23 @@ export function SwapBox({
         </div>
 
         <div className="quote">
-          {swapResult?.type === "error" ? (
+          {submit.result?.type === "error" ? (
             <div className="quote-row">
-              <span className="error">{swapResult.message}</span>
-              <button className="btn-link" onClick={() => setSwapResult(null)}>
+              <span className="error">{submit.result.message}</span>
+              <button className="btn-link" onClick={submit.reset}>
                 continue
               </button>
             </div>
-          ) : swapResult?.type === "success" ? (
+          ) : submit.result?.type === "success" ? (
             <div className="quote-row">
               <span className="success">
-                swapped {swapResult.fromAmount} {swapResult.fromSymbol} →{" "}
-                {swapResult.toAmount} {swapResult.toSymbol}
+                swapped {submit.result.fromAmount} {submit.result.fromSymbol} →{" "}
+                {submit.result.toAmount} {submit.result.toSymbol}
               </span>
               <button
                 className="btn-link"
                 onClick={() => {
-                  setSwapResult(null);
+                  submit.reset();
                   setAmount("");
                   amountInputRef.current?.focus();
                 }}

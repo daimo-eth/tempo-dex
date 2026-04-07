@@ -6,10 +6,11 @@
 };
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getAddress, isAddress, parseUnits, type Address } from "viem";
 import { useAccount, useDisconnect, WagmiProvider } from "wagmi";
+import { useChainHead, useDebouncedValue, useQuote } from "./chain";
 import {
   AssetsBox,
   HistoryBox,
@@ -18,11 +19,9 @@ import {
   TabBar,
 } from "./components";
 import { EXPLORER_URL, NETWORK_BADGE, ROOT_TOKEN, TOKEN_DECIMALS } from "./config";
-import { fetchBlockNumber, fetchQuote } from "./data";
-import "./style.css";
-import { getTokenState, loadTokens } from "./tokens";
 import { getNonRootTokens } from "./data";
-import type { QuoteState } from "./types";
+import "./style.css";
+import { loadTokens } from "./tokens";
 import { shortenAddress } from "./utils";
 import { config } from "./wagmi";
 
@@ -34,7 +33,15 @@ const DEBUG_WALLET_ADDR: Address | null = null;
 // Constants
 // -----------------------------------------------------------------------------
 
-const queryClient = new QueryClient();
+// Window-focus refetches would fight the chain-head poll for no benefit
+// (everything is keyed off the head, which already polls).
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 type Tab = "dex" | "assets";
 
@@ -81,7 +88,7 @@ function App() {
 }
 
 // -----------------------------------------------------------------------------
-// Page - main state and quote logic
+// Page - layout and form state. All chain reads come from `./chain` hooks.
 // -----------------------------------------------------------------------------
 
 function Page() {
@@ -103,24 +110,27 @@ function Page() {
     initial.asset
   );
 
-  // Block number - the single source of truth for data coherence
-  const [blockNumber, setBlockNumber] = useState<bigint | null>(null);
-
-  // Core state - minimal (initialized after tokens load)
+  // Form state - tokens initialized after tokens load
   const [fromToken, setFromToken] = useState<Address | null>(null);
   const [toToken, setToToken] = useState<Address | null>(null);
   const [amount, setAmount] = useState("100");
 
-  // Quote state - single object
-  const [quote, setQuote] = useState<QuoteState>({
-    loading: false,
-    error: null,
-    data: null,
-  });
+  // Chain head — single source of truth, polled by the chain layer.
+  const { data: blockNumber } = useChainHead();
 
-  // Debounce ref for quote fetching
-  const quoteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastQuoteParamsRef = useRef<string>("");
+  // Debounced quote — debounce the amount input, then key off the (debounced
+  // amount, from, to, blockNumber) tuple via useQuote.
+  const debouncedAmount = useDebouncedValue(amount, 300);
+  const amountIn = useMemo(() => {
+    const parsed = Number(debouncedAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0n;
+    try {
+      return parseUnits(debouncedAmount, TOKEN_DECIMALS);
+    } catch {
+      return 0n;
+    }
+  }, [debouncedAmount]);
+  const quote = useQuote(fromToken, toToken, amountIn);
 
   // -----------------------------------------------------------------------------
   // Load tokens on mount
@@ -191,100 +201,6 @@ function Page() {
     setHash("assets", addr);
   }, []);
 
-  // -----------------------------------------------------------------------------
-  // Refresh - the single path for updating data
-  // -----------------------------------------------------------------------------
-
-  const refresh = useCallback(async () => {
-    const newBlock = await fetchBlockNumber();
-    setBlockNumber(newBlock);
-    return newBlock;
-  }, []);
-
-  // Initial block fetch + auto-refresh every 5s
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
-  }, [refresh]);
-
-  // -----------------------------------------------------------------------------
-  // Quote fetching - uses block number
-  // -----------------------------------------------------------------------------
-
-  const doFetchQuote = useCallback(
-    async (from: Address, to: Address, amountStr: string, block: bigint) => {
-      const parsed = Number(amountStr);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        setQuote({ loading: false, error: null, data: null });
-        return;
-      }
-
-      if (from === to) {
-        setQuote({ loading: false, error: "same token (no-op)", data: null });
-        return;
-      }
-
-      const amountIn = parseUnits(amountStr, TOKEN_DECIMALS);
-      const paramsKey = `${from}-${to}-${amountIn.toString()}-${block.toString()}`;
-
-      // Skip if same params (already fetched this exact quote)
-      if (paramsKey === lastQuoteParamsRef.current) {
-        return;
-      }
-      lastQuoteParamsRef.current = paramsKey;
-
-      setQuote((prev) => ({ ...prev, loading: true, error: null }));
-
-      const result = await fetchQuote(from, to, amountIn, block);
-
-      if ("error" in result) {
-        setQuote({ loading: false, error: result.error, data: null });
-      } else {
-        setQuote({ loading: false, error: null, data: result.quote });
-      }
-    },
-    [] // No dependencies - uses refs for deduplication
-  );
-
-  // Debounced quote trigger - called when inputs change
-  const triggerQuote = useCallback(
-    (from: Address, to: Address, amountStr: string, block: bigint) => {
-      if (quoteTimeoutRef.current) {
-        clearTimeout(quoteTimeoutRef.current);
-      }
-      quoteTimeoutRef.current = setTimeout(() => {
-        doFetchQuote(from, to, amountStr, block);
-      }, 300);
-    },
-    [doFetchQuote]
-  );
-
-  // Re-fetch quote when block number changes
-  useEffect(() => {
-    if (blockNumber !== null && fromToken && toToken) {
-      triggerQuote(fromToken, toToken, amount, blockNumber);
-    }
-  }, [blockNumber, fromToken, toToken, amount, triggerQuote]);
-
-  // Input handlers that trigger quote
-  const handleFromToken = useCallback((addr: Address) => {
-    setFromToken(addr);
-  }, []);
-
-  const handleToToken = useCallback((addr: Address) => {
-    setToToken(addr);
-  }, []);
-
-  const handleAmount = useCallback((amountStr: string) => {
-    setAmount(amountStr);
-  }, []);
-
-  const handleSwapSuccess = useCallback(() => {
-    // Refresh gets new block and triggers all data refetch
-    refresh();
-  }, [refresh]);
-
   // Show loading until tokens are ready
   if (!tokensReady || !fromToken || !toToken) {
     return (
@@ -305,7 +221,7 @@ function Page() {
         <h1>TEMPO</h1>
         <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
         <div className="header-right">
-          {blockNumber !== null && (
+          {blockNumber !== undefined && (
             <span className="block-number">#{blockNumber.toString()}</span>
           )}
           <span className="badge">{NETWORK_BADGE}</span>
@@ -337,21 +253,17 @@ function Page() {
             toToken={toToken}
             amount={amount}
             quote={quote}
-            setFromToken={handleFromToken}
-            setToToken={handleToToken}
-            setAmount={handleAmount}
-            onSwapSuccess={handleSwapSuccess}
+            setFromToken={setFromToken}
+            setToToken={setToToken}
+            setAmount={setAmount}
           />
 
-          {isConnected && address && blockNumber !== null && (
-            <HistoryBox address={address} blockNumber={blockNumber} />
-          )}
+          {isConnected && address && <HistoryBox address={address} />}
         </>
       )}
 
-      {activeTab === "assets" && blockNumber !== null && (
+      {activeTab === "assets" && (
         <AssetsBox
-          blockNumber={blockNumber}
           selectedToken={selectedAsset}
           onSelectToken={handleSelectAsset}
         />

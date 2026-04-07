@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.16",
+    "accounts": "^0.4.25",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "serve": "^14.2.4",
-    "tempo.ts": "^0.14.2",
     "viem": "^2.44.0",
     "wagmi": "^3.5.0"
   },

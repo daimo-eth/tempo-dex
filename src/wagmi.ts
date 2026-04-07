@@ -1,23 +1,14 @@
+import { tempoWallet } from "accounts/wagmi";
 import { createConfig, http } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { KeyManager, webAuthn } from "wagmi/tempo";
 import { chain, RPC_FETCH_OPTIONS, RPC_URL } from "./config";
+
+/** rdns of the Tempo Wallet dialog connector from `accounts/wagmi`. */
+export const TEMPO_CONNECTOR_ID = "xyz.tempo";
 
 export const config = createConfig({
   chains: [chain],
-  connectors: [
-    webAuthn({
-      keyManager: KeyManager.localStorage({ key: `tempo.keys.${chain.id}` }),
-      // Use platform authenticator (TouchID, FaceID, password manager)
-      // instead of external security keys
-      createOptions: {
-        authenticatorSelection: {
-          authenticatorAttachment: "platform",
-        },
-      } as unknown as Parameters<typeof webAuthn>[0]["createOptions"],
-    }),
-    injected(),
-  ],
+  connectors: [tempoWallet(), injected()],
   transports: {
     [chain.id]: http(RPC_URL, {
       retryCount: 5,

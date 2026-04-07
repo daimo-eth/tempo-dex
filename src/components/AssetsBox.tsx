@@ -1,12 +1,9 @@
 // AssetsBox - displays token tree with selected pair liquidity
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode } from "react";
 import type { Address } from "viem";
+import { usePairLiquidity } from "../chain";
 import { ROOT_TOKEN, TOKEN_DECIMALS } from "../config";
-import {
-  fetchPairLiquidity,
-  getNonRootTokens,
-  type PairLiquidity,
-} from "../data";
+import { getNonRootTokens } from "../data";
 import { getTokenState } from "../tokens";
 import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "../utils";
 
@@ -15,17 +12,8 @@ import { BOX_CORNER, padOrTruncate, TREE_W_CHARS } from "../utils";
 // -----------------------------------------------------------------------------
 
 interface AssetsBoxProps {
-  blockNumber: bigint;
   selectedToken: Address | null;
   onSelectToken: (addr: Address) => void;
-}
-
-interface LiquidityState {
-  asset: Address;
-  block: bigint;
-  loading: boolean;
-  error: string | null;
-  data: PairLiquidity | null;
 }
 
 // -----------------------------------------------------------------------------
@@ -33,7 +21,6 @@ interface LiquidityState {
 // -----------------------------------------------------------------------------
 
 export function AssetsBox({
-  blockNumber,
   selectedToken: selectedTokenProp,
   onSelectToken,
 }: AssetsBoxProps) {
@@ -41,59 +28,20 @@ export function AssetsBox({
   const nonRootTokens = getNonRootTokens();
   const rootToken = ROOT_TOKEN;
   const selectedToken = selectedTokenProp ?? nonRootTokens[0] ?? tokens[1];
-  const [liquidity, setLiquidity] = useState<LiquidityState | null>(null);
 
-  // Deduplication: track last fetched params to avoid duplicate fetches
-  const lastFetchRef = useRef<string>("");
+  // Keyed off (selectedToken, chain head) via the chain layer. The query
+  // re-keys when the user picks a different token, naturally producing a
+  // loading state. On block ticks the same key is preserved, so
+  // placeholderData keeps the orderbook visible without flicker.
+  const { data: liquidityResult, isLoading } = usePairLiquidity(selectedToken);
+
+  const liquidityData =
+    liquidityResult && !("error" in liquidityResult) ? liquidityResult : null;
+  const liquidityError =
+    liquidityResult && "error" in liquidityResult ? liquidityResult.error : null;
 
   const getParent = (addr: Address) => tokenMeta[addr]?.parent ?? null;
   const getSymbol = (addr: Address) => tokenMeta[addr]?.symbol ?? "";
-
-  // Fetch liquidity when selected token or block number changes
-  useEffect(() => {
-    const fetchKey = `${selectedToken}-${blockNumber}`;
-    if (fetchKey === lastFetchRef.current) return;
-    lastFetchRef.current = fetchKey;
-
-    let cancelled = false;
-    const isTokenChange = liquidity?.asset !== selectedToken;
-
-    // Set loading state only on token change (stale-while-revalidate for block changes)
-    if (isTokenChange) {
-      setLiquidity({
-        asset: selectedToken,
-        block: blockNumber,
-        loading: true,
-        error: null,
-        data: null,
-      });
-    }
-
-    fetchPairLiquidity(selectedToken, blockNumber).then((result) => {
-      if (cancelled) return;
-      if ("error" in result) {
-        setLiquidity({
-          asset: selectedToken,
-          block: blockNumber,
-          loading: false,
-          error: result.error,
-          data: null,
-        });
-      } else {
-        setLiquidity({
-          asset: selectedToken,
-          block: blockNumber,
-          loading: false,
-          error: null,
-          data: result,
-        });
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedToken, blockNumber, liquidity?.asset]);
 
   const handleSelectToken = (addr: Address) => {
     if (addr !== rootToken) {
@@ -160,11 +108,9 @@ export function AssetsBox({
     const parentSymbol = getSymbol(getParent(selectedToken) ?? rootToken);
     const pairName = `${childSymbol}-${parentSymbol}`;
 
-    // Show loading only if no existing data
-    if (
-      !liquidity ||
-      (liquidity.loading && !liquidity.data && !liquidity.error)
-    ) {
+    // Show loading only if no existing data (placeholderData prevents this
+    // from triggering on block ticks — only on token change).
+    if (isLoading && !liquidityData && !liquidityError) {
       return (
         <div className="liquidity">
           <div className="liquidity-title"># {pairName}</div>
@@ -173,20 +119,20 @@ export function AssetsBox({
       );
     }
 
-    if (liquidity.error && !liquidity.data) {
+    if (liquidityError && !liquidityData) {
       return (
         <div className="liquidity">
           <div className="liquidity-title"># {pairName}</div>
-          <div className="liquidity-error">{liquidity.error}</div>
+          <div className="liquidity-error">{liquidityError}</div>
         </div>
       );
     }
 
-    if (!liquidity.data) {
+    if (!liquidityData) {
       return null;
     }
 
-    const { midPrice, tickRows: allRows } = liquidity.data;
+    const { midPrice, tickRows: allRows } = liquidityData;
 
     // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
     const tickRows = allRows.filter(
