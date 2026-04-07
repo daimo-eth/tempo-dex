@@ -137,11 +137,16 @@ function Page() {
   useEffect(() => {
     loadTokens().then((state) => {
       if (!state.error && state.tokens.length > 0) {
-        // Default pair: USDC.e → pathUSD
-        const usdce = state.tokens.find(
-          (addr) => state.tokenMeta[addr]?.symbol === "USDC.e"
-        );
-        if (usdce) {
+        // Default pair: USDC.e → USDT0, with progressive fallbacks if either
+        // symbol isn't in the loaded tokenlist.
+        const findBySymbol = (symbol: string) =>
+          state.tokens.find((addr) => state.tokenMeta[addr]?.symbol === symbol);
+        const usdce = findBySymbol("USDC.e");
+        const usdt0 = findBySymbol("USDT0");
+        if (usdce && usdt0) {
+          setFromToken(usdce);
+          setToToken(usdt0);
+        } else if (usdce) {
           setFromToken(usdce);
           setToToken(ROOT_TOKEN);
         } else if (state.tokens.length >= 2) {

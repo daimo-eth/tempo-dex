@@ -102,78 +102,80 @@ export function AssetsBox({
     return lines;
   };
 
-  // Render liquidity info
+  // Render liquidity info. The .liquidity wrapper + `// orderbook` panel-title
+  // are always rendered; only the inner body changes per state.
   const renderLiquidity = () => {
     const childSymbol = getSymbol(selectedToken);
     const parentSymbol = getSymbol(getParent(selectedToken) ?? rootToken);
     const pairName = `${childSymbol}-${parentSymbol}`;
 
-    // Show loading only if no existing data (placeholderData prevents this
-    // from triggering on block ticks — only on token change).
-    if (isLoading && !liquidityData && !liquidityError) {
-      return (
-        <div className="liquidity">
-          <div className="liquidity-title"># {pairName}</div>
-          <div className="liquidity-loading">loading...</div>
-        </div>
-      );
-    }
-
-    if (liquidityError && !liquidityData) {
-      return (
-        <div className="liquidity">
-          <div className="liquidity-title"># {pairName}</div>
-          <div className="liquidity-error">{liquidityError}</div>
-        </div>
-      );
-    }
-
-    if (!liquidityData) {
-      return null;
-    }
-
-    const { midPrice, tickRows: allRows } = liquidityData;
-
-    // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
-    const tickRows = allRows.filter(
-      (r) => r.bidLiquidity > 0n || r.askLiquidity > 0n
-    );
-
-    // Format liquidity
+    // Format liquidity (bids in child token w/ price conversion, asks in parent)
     const formatLiq = (liq: bigint, price: number, isBid: boolean) => {
       if (liq === 0n) return "";
-      // Bids are in child token (need price conversion), asks are in parent token
       const val = isBid
         ? (Number(liq) / 10 ** TOKEN_DECIMALS) * price
         : Number(liq) / 10 ** TOKEN_DECIMALS;
       return val.toFixed(0);
     };
 
+    let body: ReactNode;
+    // Show loading only if no existing data (placeholderData prevents this
+    // from triggering on block ticks — only on token change).
+    if (isLoading && !liquidityData && !liquidityError) {
+      body = (
+        <>
+          <div className="liquidity-title"># {pairName}</div>
+          <div className="liquidity-loading">loading...</div>
+        </>
+      );
+    } else if (liquidityError && !liquidityData) {
+      body = (
+        <>
+          <div className="liquidity-title"># {pairName}</div>
+          <div className="liquidity-error">{liquidityError}</div>
+        </>
+      );
+    } else if (liquidityData) {
+      const { midPrice, tickRows: allRows } = liquidityData;
+      // Defense-in-depth: filter empty ticks so a sentinel bug can't flood the DOM
+      const tickRows = allRows.filter(
+        (r) => r.bidLiquidity > 0n || r.askLiquidity > 0n
+      );
+      body = (
+        <>
+          <div className="liquidity-title">
+            # 1 {childSymbol} = {midPrice.toFixed(5)} {parentSymbol}
+          </div>
+          {tickRows.length > 0 && (
+            <table className="tick-table">
+              <thead>
+                <tr>
+                  <th>price</th>
+                  <th>bid</th>
+                  <th>ask</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tickRows.map((row) => (
+                  <tr key={row.tick}>
+                    <td>{row.price.toFixed(5)}</td>
+                    <td>{formatLiq(row.bidLiquidity, row.price, true)}</td>
+                    <td>{formatLiq(row.askLiquidity, row.price, false)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      );
+    } else {
+      body = null;
+    }
+
     return (
       <div className="liquidity">
-        <div className="liquidity-title">
-          # 1 {childSymbol} = {midPrice.toFixed(5)} {parentSymbol}
-        </div>
-        {tickRows.length > 0 && (
-          <table className="tick-table">
-            <thead>
-              <tr>
-                <th>price</th>
-                <th>bid</th>
-                <th>ask</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickRows.map((row) => (
-                <tr key={row.tick}>
-                  <td>{row.price.toFixed(5)}</td>
-                  <td>{formatLiq(row.bidLiquidity, row.price, true)}</td>
-                  <td>{formatLiq(row.askLiquidity, row.price, false)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <div className="panel-title">// orderbook</div>
+        {body}
       </div>
     );
   };

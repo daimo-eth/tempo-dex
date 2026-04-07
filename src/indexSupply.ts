@@ -208,26 +208,43 @@ function groupTransfersByTx(
  * Fetch swap history for an address from Index Supply.
  * Queries ERC-20 Transfer events and groups them by transaction to identify swaps.
  *
+ * Restricted to a 24h lookback window keyed off the chain head: without a
+ * lower block bound the planner has to walk arbitrarily far back through
+ * history before collecting enough rows to satisfy the LIMIT, even for
+ * sparsely-active addresses. Closing the range turns it into a bounded
+ * scan and (combined with the smaller LIMIT) cuts both server time and
+ * payload by ~3-10× depending on activity.
+ *
  * @param address - User wallet address
- * @param blockNumber - Maximum block number to query up to
+ * @param blockNumber - Current chain head (upper bound, also anchors the window)
  * @param maxSwaps - Maximum number of swaps to return (default 20)
  * @returns Array of swap summaries, sorted by block number descending
  */
+// Tempo block time is 1s, so 24h = 86400 blocks.
+const HISTORY_WINDOW_BLOCKS = 86_400n;
+// 60 raw transfer rows comfortably covers 20 swaps even in multi-hop
+// scenarios (most swaps emit 2-3 transfers).
+const HISTORY_TRANSFER_LIMIT = 60;
+
 export async function fetchSwapHistory(
   address: Address,
   blockNumber: bigint,
   maxSwaps = 20
 ): Promise<SwapSummary[]> {
   try {
-    // Query transfers up to the current block
+    const fromBlock =
+      blockNumber > HISTORY_WINDOW_BLOCKS
+        ? blockNumber - HISTORY_WINDOW_BLOCKS
+        : 0n;
     const query = `
       SELECT tx_hash, block_num, address, "from", "to", value
       FROM transfer
       WHERE chain = ${TEMPO_CHAIN_ID}
         AND ("from" = ${address} OR "to" = ${address})
+        AND block_num >= ${fromBlock}
         AND block_num <= ${blockNumber}
       ORDER BY block_num DESC
-      LIMIT 500
+      LIMIT ${HISTORY_TRANSFER_LIMIT}
     `;
 
     const results = await queryIndexSupply(query, [TRANSFER_SIGNATURE]);
